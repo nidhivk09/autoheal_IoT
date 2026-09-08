@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">MTTR / MTTD Analytics</h1>
+
+{% if request.GET.batch_started %}
+<div class="bg-blue-50 text-blue-800 rounded px-4 py-2 mb-4 text-sm">
+    Batch trial started in the background. Refresh this page or check the
+    <a href="{% url 'incidents:log' %}" class="underline">incident log</a> to watch it progress.
+</div>
+{% endif %}
+
+<div class="bg-white rounded shadow p-6 mb-8">
+    <canvas id="mttrChart" height="80"></canvas>
+</div>
+
+<h2 class="text-xl font-semibold mb-2">Summary statistics</h2>
+<table class="w-full text-sm mb-8">
+    <thead>
+        <tr class="text-left border-b">
+            <th class="py-2 pr-4">Fault type</th>
+            <th class="py-2 pr-4">Mode</th>
+            <th class="py-2 pr-4">n</th>
+            <th class="py-2 pr-4">MTTR mean (s)</th>
+            <th class="py-2 pr-4">MTTR median (s)</th>
+            <th class="py-2 pr-4">MTTR std dev (s)</th>
+            <th class="py-2 pr-4">MTTD mean (s)</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in stats %}
+        <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4">{{ row.fault_type }}</td>
+            <td class="py-2 pr-4">{{ row.remediation_mode }}</td>
+            <td class="py-2 pr-4">{{ row.mttr.n }}</td>
+            <td class="py-2 pr-4">{{ row.mttr.mean|default:"-" }}</td>
+            <td class="py-2 pr-4">{{ row.mttr.median|default:"-" }}</td>
+            <td class="py-2 pr-4">{{ row.mttr.stdev|default:"-" }}</td>
+            <td class="py-2 pr-4">{{ row.mttd.mean|default:"-" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="py-4 text-gray-500">No resolved incidents yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2 class="text-xl font-semibold mb-2">Run batch trial</h2>
+<form method="post" action="{% url 'dashboard:start_batch_trial' %}" class="bg-white rounded shadow p-6 max-w-lg space-y-4">
+    {% csrf_token %}
+    <div>
+        <label class="block text-sm font-medium mb-1">Device</label>
+        <select name="device_id" required class="w-full border rounded px-3 py-2">
+            {% for device in devices %}
+            <option value="{{ device.device_id }}">{{ device.display_name }} ({{ device.device_id }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label class="block text-sm font-medium mb-1">Fault type</label>
+        <select name="fault_type" required class="w-full border rounded px-3 py-2">
+            {% for value, label in fault_types %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label class="block text-sm font-medium mb-1">Remediation mode</label>
+        <select name="remediation_mode" required class="w-full border rounded px-3 py-2">
+            {% for value, label in remediation_modes %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label class="block text-sm font-medium mb-1">Number of trials</label>
+        <input type="number" name="num_trials" value="20" min="1" max="100" class="w-full border rounded px-3 py-2">
+    </div>
+    <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded font-semibold hover:bg-purple-700">
+        Run batch trial
+    </button>
+    <p class="text-xs text-gray-500">
+        Manual-mode batch trials use a scripted delay to stand in for human
+        response time (see docs/research_notes.md) rather than blocking on a
+        real person clicking "Resolve manually" N times.
+    </p>
+</form>
+
+<script>
+fetch("{% url 'dashboard:chart_data' %}")
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('mttrChart'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Mean MTTR (s)',
+                    data: data.means,
+                    backgroundColor: 'rgba(124, 58, 237, 0.6)',
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false }, title: { display: true, text: 'Mean MTTR by fault type / remediation mode' } },
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'seconds' } } }
+            }
+        });
+    });
+</script>
+{% endblock %}

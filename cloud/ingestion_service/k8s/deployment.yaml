@@ -1,0 +1,43 @@
+# Deploy with:
+#   kubectl create secret generic ingestion-service-secrets \
+#     --from-literal=IOTHUB_EVENTHUB_COMPATIBLE_CONNECTION_STRING=... \
+#     --from-literal=IOTHUB_EVENTHUB_COMPATIBLE_PATH=... \
+#     --from-literal=POSTGRES_URL=...
+#   kubectl apply -f deployment.yaml
+#
+# Never commit real secret values - this manifest only references the
+# Secret by name, it does not contain any.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-service
+  labels:
+    app: ingestion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion-service
+  template:
+    metadata:
+      labels:
+        app: ingestion-service
+    spec:
+      containers:
+        - name: ingestion-service
+          image: <ACR_LOGIN_SERVER>/ingestion-service:latest
+          envFrom:
+            - secretRef:
+                name: ingestion-service-secrets
+          env:
+            - name: IOTHUB_CONSUMER_GROUP
+              value: "$Default"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+# No Service is defined: this is a pure Event Hub consumer with no inbound
+# listener, so nothing else in the cluster needs to reach it.

@@ -1,0 +1,56 @@
+# --- secrets / env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*_rsa
+*_rsa.pub
+*.pfx
+local.settings.json
+**/connection_strings.txt
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Django ---
+webapp/staticfiles/
+webapp/media/
+webapp/db.sqlite3
+
+# --- Node (if any tooling ever used) ---
+node_modules/
+
+# --- Azure Functions ---
+cloud/functions/**/bin/
+cloud/functions/**/obj/
+cloud/functions/**/__pycache__/
+
+# --- Terraform/Bicep build artifacts ---
+*.tfstate
+*.tfstate.*
+.terraform/
+cloud/infra/*.json.bak
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# --- logs ---
+*.log
+edge_agent/*.log
+
+# --- docker ---
+*.env.docker

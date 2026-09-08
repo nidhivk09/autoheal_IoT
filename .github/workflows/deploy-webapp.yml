@@ -1,0 +1,52 @@
+name: Deploy Django Webapp
+
+# Builds webapp/Dockerfile, pushes to Azure Container Registry, and deploys
+# to Azure Container Apps. Requires these repo secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OIDC)
+#   ACR_LOGIN_SERVER        e.g. selfhealacr.azurecr.io
+#   AZURE_RESOURCE_GROUP
+#   CONTAINERAPP_NAME
+# Runtime env vars (POSTGRES_URL, DJANGO_SECRET_KEY, etc.) are configured as
+# secrets on the Container App itself, not passed through this workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webapp/**"
+      - "controller/**"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-webapp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name $(echo "${{ secrets.ACR_LOGIN_SERVER }}" | cut -d. -f1)
+
+      - name: Build and push image
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/webapp:${{ github.sha }}"
+          docker build -f webapp/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name "${{ secrets.CONTAINERAPP_NAME }}" \
+            --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE"

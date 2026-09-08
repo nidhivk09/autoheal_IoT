@@ -1,0 +1,43 @@
+name: Deploy Remediation Function
+
+# Publishes cloud/functions/ to the Azure Function App whenever it changes
+# on main. Requires these repo secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OIDC)
+#   AZURE_FUNCTIONAPP_NAME
+# App settings (IOTHUB_CONNECTION_STRING, INTERNAL_API_TOKEN, etc.) are
+# configured on the Function App itself (Azure Portal / `az functionapp
+# config appsettings set`), not passed through this workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cloud/functions/**"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-function:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: cloud/functions

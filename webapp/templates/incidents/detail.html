@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Incident #{{ incident.id }}{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-1">Incident #{{ incident.id }}</h1>
+<p class="text-gray-500 mb-6">
+    {{ incident.device.device_id }} &middot; {{ incident.get_fault_type_display }} &middot;
+    {{ incident.get_remediation_mode_display }} &middot; trial #{{ incident.trial_number }}
+</p>
+
+<div class="bg-white rounded shadow p-6 max-w-lg"
+     id="incident-status"
+     hx-get="{% url 'incidents:detail_status' incident.id %}"
+     hx-trigger="every 3s"
+     hx-swap="innerHTML">
+    {% include "incidents/_status.html" %}
+</div>
+
+{% if incident.remediation_mode == "manual" and not incident.verified_healthy_at %}
+<form method="post" action="{% url 'incidents:resolve' incident.id %}" class="mt-4">
+    {% csrf_token %}
+    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700">
+        Resolve manually
+    </button>
+</form>
+{% endif %}
+
+{% if incident.notes %}
+<p class="mt-4 text-sm text-gray-500">Notes: {{ incident.notes }}</p>
+{% endif %}
+
+<a href="{% url 'incidents:panel' %}" class="inline-block mt-6 text-blue-600 hover:underline text-sm">&larr; Back to fault injection</a>
+{% endblock %}

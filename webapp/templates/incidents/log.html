@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Incident Log{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Incident Log</h1>
+
+<form method="get" class="flex gap-4 mb-4 items-end">
+    <div>
+        <label class="block text-xs font-medium mb-1">Fault type</label>
+        <select name="fault_type" class="border rounded px-2 py-1">
+            <option value="">All</option>
+            {% for value, label in fault_types %}
+            <option value="{{ value }}" {% if value == selected_fault_type %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label class="block text-xs font-medium mb-1">Mode</label>
+        <select name="remediation_mode" class="border rounded px-2 py-1">
+            <option value="">All</option>
+            {% for value, label in remediation_modes %}
+            <option value="{{ value }}" {% if value == selected_remediation_mode %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="bg-gray-800 text-white px-3 py-1.5 rounded text-sm">Filter</button>
+    <a href="{% url 'dashboard:csv_export' %}" class="ml-auto text-sm text-blue-600 hover:underline">Export CSV</a>
+</form>
+
+<table class="w-full text-sm">
+    <thead>
+        <tr class="text-left border-b">
+            <th class="py-2 pr-4">ID</th>
+            <th class="py-2 pr-4">Device</th>
+            <th class="py-2 pr-4">Fault</th>
+            <th class="py-2 pr-4">Mode</th>
+            <th class="py-2 pr-4">Trial</th>
+            <th class="py-2 pr-4">MTTD (s)</th>
+            <th class="py-2 pr-4">MTTR (s)</th>
+            <th class="py-2 pr-4">Injected at</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for incident in incidents %}
+        <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4"><a class="text-blue-600 hover:underline" href="{% url 'incidents:detail' incident.id %}">#{{ incident.id }}</a></td>
+            <td class="py-2 pr-4">{{ incident.device.device_id }}</td>
+            <td class="py-2 pr-4">{{ incident.get_fault_type_display }}</td>
+            <td class="py-2 pr-4">{{ incident.get_remediation_mode_display }}</td>
+            <td class="py-2 pr-4">{{ incident.trial_number }}</td>
+            <td class="py-2 pr-4">{{ incident.mttd_seconds|floatformat:1|default:"-" }}</td>
+            <td class="py-2 pr-4">{{ incident.mttr_seconds|floatformat:1|default:"-" }}</td>
+            <td class="py-2 pr-4">{{ incident.injected_at }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="py-4 text-gray-500">No incidents match this filter.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

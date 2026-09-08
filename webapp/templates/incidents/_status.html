@@ -1,0 +1,27 @@
+<div class="space-y-2">
+    <p>Fault injected at <strong>{{ incident.injected_at }}</strong></p>
+
+    <p class="{% if incident.detected_at %}text-green-700{% else %}text-gray-400{% endif %}">
+        {% if incident.detected_at %}
+            Detected in <strong>{{ incident.mttd_seconds|floatformat:1 }}s</strong> ({{ incident.detected_at }})
+        {% else %}
+            Waiting for detection...
+        {% endif %}
+    </p>
+
+    <p class="{% if incident.remediation_started_at %}text-green-700{% else %}text-gray-400{% endif %}">
+        {% if incident.remediation_started_at %}
+            Remediation started at {{ incident.remediation_started_at }}
+        {% else %}
+            Waiting for remediation to start...
+        {% endif %}
+    </p>
+
+    <p class="{% if incident.verified_healthy_at %}text-green-700 font-semibold{% else %}text-gray-400{% endif %}">
+        {% if incident.verified_healthy_at %}
+            Recovered in <strong>{{ incident.mttr_seconds|floatformat:1 }}s</strong> total ({{ incident.verified_healthy_at }})
+        {% else %}
+            Waiting for recovery...
+        {% endif %}
+    </p>
+</div>

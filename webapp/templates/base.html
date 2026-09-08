@@ -1,0 +1,39 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Self-Healing IoT{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+    <nav class="bg-gray-900 text-white px-6 py-3 flex items-center gap-6">
+        <span class="font-semibold">Self-Healing IoT</span>
+        <a href="{% url 'devices:list' %}" class="hover:text-blue-300">Devices</a>
+        <a href="{% url 'incidents:panel' %}" class="hover:text-blue-300">Fault Injection</a>
+        <a href="{% url 'incidents:log' %}" class="hover:text-blue-300">Incident Log</a>
+        <a href="{% url 'dashboard:analytics' %}" class="hover:text-blue-300">Analytics</a>
+        <a href="/admin/" class="hover:text-blue-300 ml-auto text-sm text-gray-400">Admin</a>
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-6">
+        {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                    <div class="rounded px-4 py-2 text-sm
+                        {% if message.tags == 'error' %}bg-red-100 text-red-800
+                        {% elif message.tags == 'warning' %}bg-yellow-100 text-yellow-800
+                        {% else %}bg-green-100 text-green-800{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
