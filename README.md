@@ -68,8 +68,3 @@ full list and `.gitignore` for what's excluded from version control. GitHub
 Actions secrets and/or Azure Key Vault hold the deployed-environment values;
 nothing sensitive is hardcoded anywhere in this repo.
 
-## Git workflow
-
-This repo's commits and pushes are made by the project owner, not by any
-automated tooling — changes are prepared locally/in CI and the resulting
-`git` commands are left for the owner to review and run.
