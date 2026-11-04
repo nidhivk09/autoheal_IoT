@@ -1,0 +1,81 @@
+name: Build Firmware
+
+# Builds the ESP32 firmware on every push touching firmware/ and uploads
+# both variants to the private firmware container in blob storage:
+#   firmware-<version>.bin       the real build            (metadata variant=good)
+#   firmware-<version>-bad.bin   the bad_firmware fault    (metadata variant=bad)
+# Nothing is flashed automatically: rollouts are started from the dashboard's
+# Firmware page, canary first (webapp/devices/rollout.py).
+#
+# The images contain no credentials (devices are provisioned over serial,
+# see firmware/README.md), so storing them is safe.
+#
+# Requires these repo secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID (OIDC; the service
+#     principal needs "Storage Blob Data Contributor" on the storage account)
+#   FIRMWARE_STORAGE_ACCOUNT   (main.bicep output firmwareStorageAccountName)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-firmware:
+    runs-on: ubuntu-latest
+    env:
+      FW_VERSION: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build good and bad variants
+        working-directory: firmware
+        run: |
+          export PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=\\\"${FW_VERSION}\\\""
+          pio run -e esp32dev
+          export PLATFORMIO_BUILD_FLAGS="-DFW_VERSION=\\\"${FW_VERSION}-bad\\\""
+          pio run -e esp32dev_bad
+          mkdir -p ../dist
+          cp .pio/build/esp32dev/firmware.bin "../dist/firmware-${FW_VERSION}.bin"
+          cp .pio/build/esp32dev_bad/firmware.bin "../dist/firmware-${FW_VERSION}-bad.bin"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ env.FW_VERSION }}
+          path: dist/*.bin
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload to blob storage
+        run: |
+          az storage blob upload --auth-mode login \
+            --account-name "${{ secrets.FIRMWARE_STORAGE_ACCOUNT }}" --container-name firmware \
+            --file "dist/firmware-${FW_VERSION}.bin" --name "firmware-${FW_VERSION}.bin" \
+            --metadata version="${FW_VERSION}" variant=good
+          az storage blob upload --auth-mode login \
+            --account-name "${{ secrets.FIRMWARE_STORAGE_ACCOUNT }}" --container-name firmware \
+            --file "dist/firmware-${FW_VERSION}-bad.bin" --name "firmware-${FW_VERSION}-bad.bin" \
+            --metadata version="${FW_VERSION}-bad" variant=bad

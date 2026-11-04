@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autoheal IoT Fleet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column (~68ch) with full-width figure bands; a circuit-board / bench-notebook feel.
+   Copper = the human / disruptive, teal = edge (device), slate blue = cloud. */
+:root {
+  --bg: #f4f6f2;
+  --surface: #ffffff;
+  --fg: #17211d;
+  --muted: #55625b;
+  --line: #cdd6cf;
+  --edge: #12806f;
+  --cloud: #3655a8;
+  --human: #b25a22;
+  --tint-edge: #e2f2ee;
+  --tint-cloud: #e6ebf7;
+  --tint-human: #f6e9df;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101614; --surface: #17201d; --fg: #e3ebe6; --muted: #9aaaa2; --line: #2f3d37;
+    --edge: #3cc2aa; --cloud: #8aa6f0; --human: #e5925c;
+    --tint-edge: #143029; --tint-cloud: #1b2440; --tint-human: #35241a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101614; --surface: #17201d; --fg: #e3ebe6; --muted: #9aaaa2; --line: #2f3d37;
+  --edge: #3cc2aa; --cloud: #8aa6f0; --human: #e5925c;
+  --tint-edge: #143029; --tint-cloud: #1b2440; --tint-human: #35241a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--body); font-size: 17px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 64px;
+  margin: 0;
+}
+.wrap { max-width: 1000px; margin: 0 auto; display: grid; gap: 56px; }
+.prose { max-width: 68ch; display: grid; gap: 14px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: clamp(1.5rem, 3.4vw, 2rem); font-weight: 600; }
+h3 { font-size: 1.15rem; font-weight: 600; }
+p { margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.lead { font-size: 1.2rem; color: var(--fg); }
+.muted { color: var(--muted); }
+a { color: var(--cloud); }
+
+header.hero { padding-top: 56px; display: grid; gap: 18px; }
+.tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.tier { padding: 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); display: grid; gap: 6px; min-width: 0; }
+.tier b { font-family: var(--display); font-size: 1.05rem; }
+.tier .tag { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+.tier.e { border-top: 4px solid var(--edge); } .tier.e .tag { color: var(--edge); }
+.tier.c { border-top: 4px solid var(--cloud); } .tier.c .tag { color: var(--cloud); }
+.tier.h { border-top: 4px solid var(--human); } .tier.h .tag { color: var(--human); }
+.tier p { font-size: 0.95rem; color: var(--muted); }
+
+section { display: grid; gap: 20px; }
+figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 12px; }
+.svgbox { overflow-x: auto; }
+.svgbox svg { display: block; width: 100%; min-width: 680px; height: auto; color: var(--fg); }
+figcaption { font-size: 0.92rem; color: var(--muted); max-width: 80ch; }
+
+/* SVG styling via page CSS */
+svg text { font-family: var(--body); font-size: 13px; fill: currentColor; }
+svg .lbl { font-size: 11.5px; fill: var(--muted); }
+svg .mono { font-family: var(--mono); font-size: 11.5px; }
+svg .ttl { font-family: var(--display); font-weight: 600; font-size: 14.5px; }
+svg .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+svg .ln { stroke: currentColor; stroke-width: 1.5; fill: none; }
+svg .dash { stroke-dasharray: 5 4; }
+svg .e-box { fill: var(--tint-edge); stroke: var(--edge); stroke-width: 1.5; }
+svg .c-box { fill: var(--tint-cloud); stroke: var(--cloud); stroke-width: 1.5; }
+svg .h-box { fill: var(--tint-human); stroke: var(--human); stroke-width: 1.5; }
+svg .e-ln { stroke: var(--edge); stroke-width: 2; fill: none; }
+svg .c-ln { stroke: var(--cloud); stroke-width: 2; fill: none; }
+svg .h-ln { stroke: var(--human); stroke-width: 2; fill: none; }
+svg .e-fill { fill: var(--edge); } svg .c-fill { fill: var(--cloud); } svg .h-fill { fill: var(--human); }
+svg .e-txt { fill: var(--edge); } svg .c-txt { fill: var(--cloud); } svg .h-txt { fill: var(--human); }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 8px; min-width: 0; align-content: start; }
+.card p, .card li { font-size: 0.95rem; }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; }
+
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+.chip { display: inline-block; font-family: var(--mono); font-size: 11.5px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.chip.e { background: var(--tint-edge); color: var(--edge); }
+.chip.c { background: var(--tint-cloud); color: var(--cloud); }
+.chip.h { background: var(--tint-human); color: var(--human); }
+
+.factor { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.factor .card .n { font-family: var(--display); font-size: 2rem; font-weight: 700; line-height: 1; }
+.times { font-family: var(--display); font-size: 1.4rem; text-align: center; color: var(--muted); }
+
+dl.gloss { display: grid; grid-template-columns: minmax(140px, 220px) minmax(0, 1fr); gap: 8px 20px; margin: 0; }
+dl.gloss dt { font-family: var(--mono); font-size: 0.86rem; font-weight: 600; padding-top: 2px; }
+dl.gloss dd { margin: 0; color: var(--muted); }
+
+footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 720px) {
+  .tiers, .cols, .factor { grid-template-columns: minmax(0, 1fr); }
+  dl.gloss { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  dl.gloss dd { margin-bottom: 10px; }
+  body { font-size: 16px; }
+}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="eyebrow">WIC CoE · research project · ESP32 + Azure</span>
+  <h1>A fleet of devices that repairs itself, and measures how fast it did</h1>
+  <p class="lead prose">Small ESP32 boards report their own health every five seconds. When something breaks, the board tries to fix it first. If it can't, the cloud tries a ladder of fixes. If the cloud runs out of options, a person gets a message. Every step is timestamped, so the project produces real numbers on how fast each tier recovers.</p>
+  <div class="tiers">
+    <div class="tier e"><span class="tag">Tier 1 · edge</span><b>The device</b><p>First aid. Restarts a frozen task, frees leaked memory, reconnects WiFi, rolls back a bad update. Takes seconds.</p></div>
+    <div class="tier c"><span class="tag">Tier 2 · cloud</span><b>Azure</b><p>The doctor. Sees the whole fleet, diagnoses per device, tries stronger fixes in order and checks each one.</p></div>
+    <div class="tier h"><span class="tag">Tier 3 · human</span><b>A person</b><p>The specialist. Gets a chat message only when automation gives up, or approves risky steps.</p></div>
+  </div>
+</header>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">The problem</span>
+    <h2>Devices fail in predictable, boring ways</h2>
+    <p>IoT devices sit in farms, factories and buildings that nobody visits. They lose WiFi, a program freezes, memory slowly leaks, a bug floods the server with messages, a setting gets changed, or a firmware update breaks them. If a person has to notice and fix each one, recovery is slow and expensive.</p>
+    <p>Two numbers describe how well a system copes. <b>MTTD</b> (mean time to detect) is how long until something notices the failure. <b>MTTR</b> (mean time to recover) is how long until the device works again. This project is built to measure both, under controlled conditions.</p>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Architecture</span>
+    <h2>How the pieces talk to each other</h2>
+    <p>All devices connect to Azure IoT Hub. Everything they send flows to the ingestion service, which stores it and watches for trouble. Problems become jobs for the remediation function, which sends commands back to the device through the same hub.</p>
+  </div>
+  <figure>
+    <div class="svgbox">
+    <svg viewBox="0 0 960 440" role="img" aria-label="Architecture: ESP32 devices send telemetry to IoT Hub; the ingestion service stores metrics in Django's database, forwards recovery events, and sends detections to the remediation dispatcher, which queues jobs for the worker; the worker sends direct methods back to devices, updates incidents in Django, and escalates to a human.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+      </defs>
+      <!-- devices -->
+      <rect class="e-box" x="20" y="40" width="160" height="210" rx="8"/>
+      <text class="ttl e-txt" x="100" y="64" text-anchor="middle">ESP32 fleet</text>
+      <rect class="box" x="40" y="80" width="120" height="40" rx="5"/><text class="mono" x="100" y="105" text-anchor="middle">esp32-01</text>
+      <rect class="box" x="40" y="132" width="120" height="40" rx="5"/><text class="mono" x="100" y="157" text-anchor="middle">esp32-02</text>
+      <rect class="box" x="40" y="184" width="120" height="40" rx="5"/><text class="mono" x="100" y="209" text-anchor="middle">esp32-03</text>
+      <!-- hub -->
+      <rect class="c-box" x="250" y="90" width="140" height="110" rx="8"/>
+      <text class="ttl" x="320" y="132" text-anchor="middle">Azure IoT Hub</text>
+      <text class="lbl" x="320" y="152" text-anchor="middle">MQTT broker,</text>
+      <text class="lbl" x="320" y="168" text-anchor="middle">device twins</text>
+      <!-- ingestion -->
+      <rect class="c-box" x="470" y="40" width="180" height="120" rx="8"/>
+      <text class="ttl" x="560" y="70" text-anchor="middle">Ingestion service</text>
+      <text class="lbl" x="560" y="90" text-anchor="middle">Kubernetes (AKS)</text>
+      <text class="lbl" x="560" y="112" text-anchor="middle">stores every metric</text>
+      <text class="lbl" x="560" y="128" text-anchor="middle">FleetDetector per device</text>
+      <!-- django -->
+      <rect class="box" x="740" y="40" width="200" height="120" rx="8"/>
+      <text class="ttl" x="840" y="70" text-anchor="middle">Django + Postgres</text>
+      <text class="lbl" x="840" y="90" text-anchor="middle">dashboard, incidents,</text>
+      <text class="lbl" x="840" y="106" text-anchor="middle">rollouts, analytics</text>
+      <text class="lbl" x="840" y="128" text-anchor="middle">single source of truth</text>
+      <!-- dispatcher -->
+      <rect class="c-box" x="470" y="250" width="180" height="64" rx="8"/>
+      <text class="ttl" x="560" y="277" text-anchor="middle">Dispatcher</text>
+      <text class="lbl" x="560" y="296" text-anchor="middle">Azure Function (HTTP)</text>
+      <!-- worker -->
+      <rect class="c-box" x="740" y="250" width="200" height="64" rx="8"/>
+      <text class="ttl" x="840" y="277" text-anchor="middle">Worker</text>
+      <text class="lbl" x="840" y="296" text-anchor="middle">runs the escalation ladder</text>
+      <!-- human -->
+      <rect class="h-box" x="740" y="374" width="200" height="50" rx="8"/>
+      <text class="ttl h-txt" x="840" y="404" text-anchor="middle">Human (chat webhook)</text>
+
+      <!-- arrows -->
+      <line class="ln" x1="180" y1="120" x2="248" y2="120" marker-end="url(#ar)"/>
+      <text class="lbl" x="214" y="112" text-anchor="middle">telemetry</text>
+      <line class="ln" x1="250" y1="172" x2="182" y2="172" marker-end="url(#ar)"/>
+      <text class="lbl" x="214" y="192" text-anchor="middle">twin</text>
+
+      <path class="ln" d="M390 120 H430 V100 H468" marker-end="url(#ar)"/>
+      <text class="lbl" x="430" y="90" text-anchor="middle">all messages</text>
+
+      <line class="ln" x1="650" y1="78" x2="738" y2="78" marker-end="url(#ar)"/>
+      <text class="lbl" x="694" y="70" text-anchor="middle">metrics</text>
+      <line class="ln" x1="650" y1="130" x2="738" y2="130" marker-end="url(#ar)"/>
+      <text class="lbl" x="694" y="122" text-anchor="middle">recovered</text>
+      <text class="lbl" x="694" y="148" text-anchor="middle">events</text>
+
+      <line class="ln" x1="560" y1="160" x2="560" y2="248" marker-end="url(#ar)"/>
+      <text class="lbl" x="570" y="210">detections</text>
+
+      <line class="ln" x1="650" y1="282" x2="738" y2="282" marker-end="url(#ar)"/>
+      <text class="lbl" x="694" y="274" text-anchor="middle">queue</text>
+
+      <line class="ln" x1="840" y1="250" x2="840" y2="162" marker-end="url(#ar)"/>
+      <text class="lbl" x="850" y="210">incident updates</text>
+
+      <path class="c-ln" d="M760 314 V344 H320 V202" marker-end="url(#ar)"/>
+      <text class="lbl c-txt" x="520" y="362" text-anchor="middle">direct methods: get_health, restart, rollback, reboot</text>
+
+      <line class="h-ln" x1="900" y1="314" x2="900" y2="372" marker-end="url(#ar)"/>
+      <text class="lbl h-txt" x="910" y="348">escalate</text>
+    </svg>
+    </div>
+    <figcaption>Devices only ever talk to IoT Hub. The blue return path is how the cloud acts on a device: a direct method is a remote function call that the board answers. Django also sends approvals to the dispatcher (not drawn) when a person approves a risky step.</figcaption>
+  </figure>
+
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>Component</th><th>Where it runs</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><b>Firmware</b> <code>firmware/</code></td><td>Each ESP32</td><td>Sends health telemetry, heals itself, accepts remote commands, installs updates safely, injects faults for experiments.</td></tr>
+        <tr><td><b>IoT Hub</b></td><td>Azure</td><td>Receives all messages, delivers commands, and keeps a <i>device twin</i> per board: the settings the cloud wants and the settings the board reports.</td></tr>
+        <tr><td><b>Ingestion service</b> <code>cloud/ingestion_service/</code></td><td>Kubernetes (AKS)</td><td>Writes every metric to Postgres, forwards recovery events to Django, and detects failures per device.</td></tr>
+        <tr><td><b>Remediation function</b> <code>cloud/functions/</code></td><td>Azure Functions</td><td>The dispatcher queues each problem; the worker runs the escalation ladder against that device.</td></tr>
+        <tr><td><b>Django webapp</b> <code>webapp/</code></td><td>Container Apps</td><td>Dashboard, fault injection, firmware rollouts, incident timelines, analytics and CSV export. Owns all incident data.</td></tr>
+        <tr><td><b>Controller</b> <code>controller/</code></td><td>Inside Django</td><td>Talks to IoT Hub's REST API and creates short-lived download links for firmware in Blob Storage.</td></tr>
+        <tr><td><b>Infra + CI/CD</b> <code>cloud/infra/</code></td><td>GitHub Actions</td><td>Bicep describes every Azure resource as code; workflows deploy the cloud parts and build both firmware variants.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Tier 1 · the device</span>
+    <h2>The edge healer: check, act, verify, report</h2>
+    <p>The board has no sensors attached; it watches itself. Every five seconds it sends free memory, WiFi signal, uptime, reconnect counts, heal counts and its running settings. Once a second, the edge healer looks for four symptoms. When it finds one, it applies a fix, confirms the fix worked, and tells the cloud exactly what happened and when.</p>
+  </div>
+  <figure>
+    <div class="svgbox">
+    <svg viewBox="0 0 960 250" role="img" aria-label="Edge healer loop: check every second, detect a symptom, act, verify within five seconds, and report a recovered event; if verification fails, reboot and report after the board comes back.">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <rect class="box" x="20" y="40" width="150" height="70" rx="8"/>
+      <text class="ttl" x="95" y="70" text-anchor="middle">Check</text><text class="lbl" x="95" y="90" text-anchor="middle">every 1 s</text>
+      <rect class="e-box" x="220" y="40" width="160" height="70" rx="8"/>
+      <text class="ttl" x="300" y="70" text-anchor="middle">Symptom found</text><text class="lbl" x="300" y="90" text-anchor="middle">hang · heap · flood · drift</text>
+      <rect class="e-box" x="430" y="40" width="160" height="70" rx="8"/>
+      <text class="ttl" x="510" y="70" text-anchor="middle">Act</text><text class="lbl" x="510" y="90" text-anchor="middle">restart app / reapply</text>
+      <rect class="e-box" x="640" y="40" width="130" height="70" rx="8"/>
+      <text class="ttl" x="705" y="70" text-anchor="middle">Verify</text><text class="lbl" x="705" y="90" text-anchor="middle">within 5 s</text>
+      <rect class="box" x="820" y="40" width="120" height="70" rx="8"/>
+      <text class="ttl" x="880" y="64" text-anchor="middle">Report</text><text class="lbl mono" x="880" y="84" text-anchor="middle">"recovered"</text><text class="lbl" x="880" y="100" text-anchor="middle">event</text>
+      <line class="ln" x1="170" y1="75" x2="218" y2="75" marker-end="url(#ar2)"/>
+      <line class="ln" x1="380" y1="75" x2="428" y2="75" marker-end="url(#ar2)"/>
+      <line class="ln" x1="590" y1="75" x2="638" y2="75" marker-end="url(#ar2)"/>
+      <line class="e-ln" x1="770" y1="75" x2="818" y2="75" marker-end="url(#ar2)"/>
+      <text class="lbl e-txt" x="794" y="67" text-anchor="middle">healthy</text>
+      <path class="h-ln" d="M705 110 V170 H560" marker-end="url(#ar2)"/>
+      <text class="lbl h-txt" x="715" y="146">still broken</text>
+      <rect class="h-box" x="400" y="148" width="158" height="46" rx="8"/>
+      <text class="ttl" x="479" y="176" text-anchor="middle">Reboot</text>
+      <path class="ln dash" d="M558 184 H880 V112" marker-end="url(#ar2)"/>
+      <text class="lbl" x="720" y="204" text-anchor="middle">event saved to flash, sent after boot</text>
+      <path class="ln dash" d="M95 110 V225 H880" />
+      <text class="lbl" x="300" y="240" text-anchor="middle">no symptom: keep checking</text>
+    </svg>
+    </div>
+    <figcaption>The event carries the device's own timestamps for detection, action and verification. Django uses them to stamp the incident, so the dataset knows the edge fixed it and how long it took.</figcaption>
+  </figure>
+
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>Symptom the board sees</th><th>Underlying fault</th><th>Edge fix</th></tr></thead>
+      <tbody>
+        <tr><td>App task stopped ticking for 5 s</td><td>Task hang</td><td>Restart the app task</td></tr>
+        <tr><td>Free memory below threshold, 3 checks in a row</td><td>Memory leak</td><td>Restart the app task, which frees everything it owned</td></tr>
+        <tr><td>More than 5 messages per second for 3 s</td><td>Runaway message loop</td><td>Restart the app task</td></tr>
+        <tr><td>Running settings differ from the cloud's desired settings</td><td>Config drift</td><td>Reapply the desired settings</td></tr>
+        <tr><td>WiFi or MQTT connection lost</td><td>Network outage</td><td>Reconnect with exponential backoff (1, 2, 4, 8 s), reset the WiFi driver after repeated failures, buffer messages to flash and send them later</td></tr>
+        <tr><td>New firmware can't send telemetry within 60 s</td><td>Bad update</td><td>Roll back to the previous firmware (next section)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="prose">
+    <p><b>Edge healing can be switched off</b> per device from the dashboard (it travels to the board through the device twin). With it off, the board behaves like simple tutorial code: it retries WiFi every 30 seconds, drops messages while offline, and trusts any firmware it's given. That's the baseline the experiment compares against.</p>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Tier 1 · safe updates</span>
+    <h2>Over-the-air updates with automatic rollback</h2>
+    <p>The ESP32's flash holds two firmware slots. An update is downloaded into the empty slot while the old version stays untouched. After rebooting into the new version, the board has 60 seconds to prove it works by connecting and actually sending at least three telemetry messages.</p>
+  </div>
+  <figure>
+    <div class="svgbox">
+    <svg viewBox="0 0 960 270" role="img" aria-label="OTA update: slot A runs the current version, the new image downloads into slot B, the board reboots into B and runs a 60 second self-test; on pass B is marked valid, on fail the board boots back into slot A.">
+      <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <text class="lbl" x="20" y="28">FLASH</text>
+      <rect class="e-box" x="20" y="40" width="170" height="60" rx="6"/>
+      <text class="ttl" x="105" y="66" text-anchor="middle">Slot A</text><text class="mono" x="105" y="86" text-anchor="middle">v1.0.5 · running</text>
+      <rect class="box dash" x="20" y="116" width="170" height="60" rx="6"/>
+      <text class="ttl" x="105" y="142" text-anchor="middle">Slot B</text><text class="mono" x="105" y="162" text-anchor="middle">empty</text>
+
+      <rect class="box" x="250" y="116" width="150" height="60" rx="8"/>
+      <text class="ttl" x="325" y="142" text-anchor="middle">Download</text><text class="lbl" x="325" y="160" text-anchor="middle">v1.0.6 over HTTPS</text>
+      <line class="ln" x1="400" y1="146" x2="448" y2="146" marker-end="url(#ar3)"/>
+      <path class="ln" d="M250 146 H192" marker-end="url(#ar3)"/>
+      <text class="lbl" x="221" y="138" text-anchor="middle">writes</text>
+
+      <rect class="box" x="450" y="116" width="140" height="60" rx="8"/>
+      <text class="ttl" x="520" y="142" text-anchor="middle">Reboot</text><text class="lbl" x="520" y="160" text-anchor="middle">into slot B</text>
+      <line class="ln" x1="590" y1="146" x2="638" y2="146" marker-end="url(#ar3)"/>
+
+      <rect class="e-box" x="640" y="106" width="150" height="80" rx="8"/>
+      <text class="ttl" x="715" y="134" text-anchor="middle">Self-test</text><text class="lbl" x="715" y="152" text-anchor="middle">60 s window</text><text class="lbl" x="715" y="168" text-anchor="middle">≥ 3 telemetry sent?</text>
+
+      <path class="e-ln" d="M790 126 H840 V70 H860" marker-end="url(#ar3)"/>
+      <text class="lbl e-txt" x="850" y="104">pass</text>
+      <rect class="e-box" x="862" y="40" width="80" height="60" rx="6"/>
+      <text class="ttl" x="902" y="66" text-anchor="middle">Keep B</text><text class="lbl" x="902" y="84" text-anchor="middle">valid</text>
+
+      <path class="h-ln" d="M715 186 V236 H105 V102" marker-end="url(#ar3)"/>
+      <text class="lbl h-txt" x="420" y="254" text-anchor="middle">fail: roll back, boot slot A again, report "ota_self_test_failed"</text>
+    </svg>
+    </div>
+    <figcaption>A broken update costs about a minute of downtime instead of a dead device. With edge healing off the self-test is skipped, so the cloud has to notice and call <code>rollback_firmware</code> itself.</figcaption>
+  </figure>
+  <div class="prose">
+    <p><b>Canary rollouts.</b> The dashboard's Firmware page updates one board first (the canary), waits until it is healthy on the new version, then moves to the next. If any board rolls back or isn't healthy within four minutes, the rollout stops and the rest of the fleet keeps its current firmware.</p>
+    <p>Firmware files contain no passwords. Each board's WiFi and IoT Hub credentials are written once over USB and stored in its own memory, so one firmware file works for every board and can sit safely in cloud storage.</p>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Tier 2 · the cloud</span>
+    <h2>Detection, then the escalation ladder</h2>
+    <p>The ingestion service watches each device separately and raises four kinds of detection. Each one fires once when the problem starts, not every five seconds while it continues.</p>
+  </div>
+  <div class="cols">
+    <div class="card"><span class="chip c">telemetry_stale</span><p>No live telemetry for 30 seconds. Could be a frozen task, a bad update, or a device that's offline.</p></div>
+    <div class="card"><span class="chip c">heap_low</span><p>Free memory under the device's threshold in two readings in a row.</p></div>
+    <div class="card"><span class="chip c">message_flood</span><p>More than 30 messages in 10 seconds. Replayed (buffered) messages don't count.</p></div>
+    <div class="card"><span class="chip c">config_drift</span><p>The settings the device reports differ from the settings Django wants, two readings in a row.</p></div>
+  </div>
+  <div class="prose">
+    <p>A detection becomes a job for the worker, which tries fixes from least to most disruptive. After every step it asks the device for its health and only moves on if the device still isn't healthy. This is the ladder for a silent device:</p>
+  </div>
+  <figure>
+    <div class="svgbox">
+    <svg viewBox="0 0 960 300" role="img" aria-label="Escalation ladder for a silent device: probe, restart_service, rollback_firmware, reboot, escalate. Each step is verified with get_health; a healthy device ends the ladder as resolved by cloud. An unreachable device skips straight to escalation. Rollback and reboot are disruptive and need approval in approval mode.">
+      <defs><marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <path class="h-ln dash" d="M95 92 V40 H860 V90" marker-end="url(#ar4)"/>
+      <text class="lbl h-txt" x="478" y="32" text-anchor="middle">unreachable for 60 s: the cloud can't fix a network, so it escalates</text>
+
+      <rect class="c-box" x="20" y="92" width="150" height="62" rx="8"/>
+      <text class="ttl" x="95" y="118" text-anchor="middle">probe</text><text class="lbl" x="95" y="138" text-anchor="middle">reachable? healthy?</text>
+      <rect class="c-box" x="210" y="92" width="150" height="62" rx="8"/>
+      <text class="ttl" x="285" y="118" text-anchor="middle">restart_service</text><text class="lbl" x="285" y="138" text-anchor="middle">restart app task</text>
+      <rect class="h-box" x="400" y="92" width="150" height="62" rx="8"/>
+      <text class="ttl" x="475" y="118" text-anchor="middle">rollback_firmware</text><text class="lbl" x="475" y="138" text-anchor="middle">only if updated &lt; 30 min</text>
+      <rect class="h-box" x="590" y="92" width="150" height="62" rx="8"/>
+      <text class="ttl" x="665" y="118" text-anchor="middle">reboot</text><text class="lbl" x="665" y="138" text-anchor="middle">full restart</text>
+      <rect class="h-box" x="780" y="92" width="160" height="62" rx="8"/>
+      <text class="ttl h-txt" x="860" y="118" text-anchor="middle">escalate</text><text class="lbl" x="860" y="138" text-anchor="middle">chat message</text>
+
+      <line class="ln" x1="170" y1="123" x2="208" y2="123" marker-end="url(#ar4)"/>
+      <line class="ln" x1="360" y1="123" x2="398" y2="123" marker-end="url(#ar4)"/>
+      <line class="ln" x1="550" y1="123" x2="588" y2="123" marker-end="url(#ar4)"/>
+      <line class="ln" x1="740" y1="123" x2="778" y2="123" marker-end="url(#ar4)"/>
+      <text class="lbl" x="569" y="174" text-anchor="middle">still unhealthy → next step</text>
+
+      <line class="c-ln" x1="285" y1="154" x2="285" y2="222" marker-end="url(#ar4)"/>
+      <line class="c-ln" x1="475" y1="154" x2="475" y2="222" marker-end="url(#ar4)"/>
+      <line class="c-ln" x1="665" y1="154" x2="665" y2="222" marker-end="url(#ar4)"/>
+      <rect class="c-box" x="210" y="224" width="530" height="44" rx="8"/>
+      <text class="ttl" x="475" y="251" text-anchor="middle">verify with get_health → healthy = resolved by cloud</text>
+
+      <path class="e-ln dash" d="M60 154 V190 H130 V156" marker-end="url(#ar4)"/>
+      <text class="lbl e-txt" x="20" y="210">device says it's fixing</text>
+      <text class="lbl e-txt" x="20" y="225">itself: wait</text>
+    </svg>
+    </div>
+    <figcaption>Copper boxes are disruptive steps. In approval mode the ladder pauses before them until a person clicks Approve. Other detections use shorter ladders: memory and flood problems go restart → reboot; config drift goes twin update → reapply settings → reboot.</figcaption>
+  </figure>
+
+  <div class="cols">
+    <div class="card">
+      <h3>Safety rules</h3>
+      <ul>
+        <li><b>Yield to the edge.</b> If the device reports it's mid-heal or mid-self-test, the cloud waits instead of interfering.</li>
+        <li><b>Check before every step.</b> If another tier already fixed it, the ladder stops.</li>
+        <li><b>One ladder per incident.</b> The worker claims the incident first, so duplicate detections do nothing.</li>
+        <li><b>Circuit breaker.</b> Six or more cloud fixes on one device in 30 minutes means something deeper is wrong, so the cloud stops and calls a person instead of rebooting forever.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Three remediation modes</h3>
+      <ul>
+        <li><span class="chip h">manual</span> The cloud only detects and notifies. A person resolves it from the dashboard.</li>
+        <li><span class="chip c">automated</span> The cloud runs the whole ladder on its own.</li>
+        <li><span class="chip c">approval</span> Safe steps run automatically; reboot and rollback wait for a person to approve.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Incident lifecycle</span>
+    <h2>What Django records for every failure</h2>
+    <p>Each failure is an <i>incident</i>. Its state moves forward as tiers report in. The rule is <b>first to verify wins</b>: if the device already fixed it, the cloud can't later claim the credit.</p>
+  </div>
+  <figure>
+    <div class="svgbox">
+    <svg viewBox="0 0 960 230" role="img" aria-label="Incident states: injected, detected, remediating, recovered. Remediating can branch to awaiting approval, which returns to remediating once approved, or to escalated, which ends in recovered by a human. An edge heal can jump from injected straight to recovered.">
+      <defs><marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <rect class="box" x="20" y="90" width="140" height="50" rx="25"/><text class="ttl" x="90" y="120" text-anchor="middle">injected</text>
+      <rect class="box" x="240" y="90" width="140" height="50" rx="25"/><text class="ttl" x="310" y="120" text-anchor="middle">detected</text>
+      <rect class="c-box" x="460" y="90" width="160" height="50" rx="25"/><text class="ttl" x="540" y="120" text-anchor="middle">remediating</text>
+      <rect class="e-box" x="780" y="90" width="160" height="50" rx="25"/><text class="ttl" x="860" y="120" text-anchor="middle">recovered</text>
+      <rect class="h-box" x="460" y="176" width="160" height="44" rx="22"/><text class="ttl" x="540" y="203" text-anchor="middle">awaiting approval</text>
+      <rect class="h-box" x="680" y="176" width="140" height="44" rx="22"/><text class="ttl" x="750" y="203" text-anchor="middle">escalated</text>
+
+      <line class="ln" x1="160" y1="115" x2="238" y2="115" marker-end="url(#ar5)"/>
+      <text class="lbl" x="199" y="107" text-anchor="middle">noticed</text>
+      <line class="ln" x1="380" y1="115" x2="458" y2="115" marker-end="url(#ar5)"/>
+      <text class="lbl" x="419" y="107" text-anchor="middle">claimed</text>
+      <line class="c-ln" x1="620" y1="115" x2="778" y2="115" marker-end="url(#ar5)"/>
+      <text class="lbl c-txt" x="699" y="107" text-anchor="middle">verified healthy</text>
+      <path class="h-ln" d="M500 140 V174" marker-end="url(#ar5)"/>
+      <path class="h-ln" d="M580 174 V142" marker-end="url(#ar5)"/>
+      <text class="lbl h-txt" x="590" y="162">approved</text>
+      <path class="h-ln" d="M610 140 L690 176" marker-end="url(#ar5)"/>
+      <path class="h-ln" d="M820 198 H860 V142" marker-end="url(#ar5)"/>
+      <text class="lbl h-txt" x="870" y="176">person fixes</text>
+      <path class="e-ln dash" d="M90 90 V46 H860 V88" marker-end="url(#ar5)"/>
+      <text class="lbl e-txt" x="475" y="38" text-anchor="middle">edge heals it before the cloud acts (device's own timestamps)</text>
+    </svg>
+    </div>
+    <figcaption>Every incident also stores who detected it, who resolved it (edge, cloud, human, or the device recovering on its own), the cloud steps taken, and how many messages were lost while offline.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Walkthrough</span>
+    <h2>The same fault with and without edge healing</h2>
+    <p>Times below are illustrative, worked out from the thresholds in the code (1 s edge checks, 5 s telemetry, 30 s staleness, backoff up to 8 s, 30 s baseline retry). Real trials will measure them.</p>
+  </div>
+  <figure>
+    <div class="svgbox">
+    <svg viewBox="0 0 960 300" role="img" aria-label="Timeline comparison, 0 to 70 seconds. Memory leak with edge healing on recovers in about 4 seconds; with edge off and cloud automation, about 15 seconds. A 30 second network outage recovers at about 35 seconds with edge on and about 63 seconds with edge off.">
+      <!-- scale: x = 230 + t*10, t in 0..70 -->
+      <g>
+        <line class="grid" x1="230" y1="40" x2="230" y2="250"/><text class="lbl" x="230" y="270" text-anchor="middle">0 s</text>
+        <line class="grid" x1="330" y1="40" x2="330" y2="250"/><text class="lbl" x="330" y="270" text-anchor="middle">10</text>
+        <line class="grid" x1="430" y1="40" x2="430" y2="250"/><text class="lbl" x="430" y="270" text-anchor="middle">20</text>
+        <line class="grid" x1="530" y1="40" x2="530" y2="250"/><text class="lbl" x="530" y="270" text-anchor="middle">30</text>
+        <line class="grid" x1="630" y1="40" x2="630" y2="250"/><text class="lbl" x="630" y="270" text-anchor="middle">40</text>
+        <line class="grid" x1="730" y1="40" x2="730" y2="250"/><text class="lbl" x="730" y="270" text-anchor="middle">50</text>
+        <line class="grid" x1="830" y1="40" x2="830" y2="250"/><text class="lbl" x="830" y="270" text-anchor="middle">60</text>
+        <line class="grid" x1="930" y1="40" x2="930" y2="250"/><text class="lbl" x="930" y="270" text-anchor="middle">70 s</text>
+      </g>
+      <text class="ttl" x="20" y="30">Memory leak</text>
+      <text x="20" y="66">edge ON</text>
+      <rect class="e-fill" x="230" y="54" width="40" height="18" rx="3"/>
+      <text class="lbl e-txt" x="280" y="68">edge detects ~3 s, healed ~4 s</text>
+      <text x="20" y="106">edge OFF · automated</text>
+      <rect class="c-fill" x="230" y="94" width="150" height="18" rx="3"/>
+      <line class="ln" x1="330" y1="88" x2="330" y2="118"/>
+      <text class="lbl c-txt" x="390" y="108">cloud detects ~10 s, restart, verified ~15 s</text>
+
+      <text class="ttl" x="20" y="156">30 s network outage</text>
+      <rect class="box dash" x="230" y="168" width="300" height="72"/>
+      <text class="lbl" x="380" y="160" text-anchor="middle">WiFi unavailable</text>
+      <text x="20" y="192">edge ON</text>
+      <rect class="e-fill" x="230" y="180" width="350" height="18" rx="3"/>
+      <text class="lbl e-txt" x="590" y="194">backoff retry ~35 s, buffered msgs sent</text>
+      <text x="20" y="232">edge OFF</text>
+      <rect class="h-fill" x="230" y="220" width="630" height="18" rx="3"/>
+      <text class="lbl h-txt" x="866" y="234">~63 s</text>
+      <line class="ln" x1="530" y1="214" x2="530" y2="244"/>
+      <text class="lbl" x="536" y="256">cloud notices at 30 s but can't reach it</text>
+    </svg>
+    </div>
+    <figcaption>Bars run from fault injection to verified recovery. The edge is fastest for anything the board can see in itself. For network outages the cloud can only watch: with edge healing off, the board waits for its next fixed 30 s retry and drops the messages it couldn't send.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">The experiment</span>
+    <h2>Three variables, every combination</h2>
+    <p>The dashboard's batch-trial runner repeats inject → wait for recovery → wait until healthy → repeat, 20 to 30 times per combination. Results export as CSV for analysis in Python or R.</p>
+  </div>
+  <div class="factor">
+    <div class="card"><span class="n">6</span><b>Fault types</b><p class="muted">network loss · task hang · memory leak · message flood · config drift · bad firmware</p></div>
+    <div class="card"><span class="n">3</span><b>Remediation modes</b><p class="muted">manual · automated · approval</p></div>
+    <div class="card"><span class="n">2</span><b>Edge healing</b><p class="muted">on · off</p></div>
+  </div>
+  <p class="times">6 × 3 × 2 = 36 conditions</p>
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>Measured per incident</th><th>Why it matters</th></tr></thead>
+      <tbody>
+        <tr><td>MTTD, MTTR</td><td>Speed of noticing and of recovering</td></tr>
+        <tr><td>Detected by / resolved by</td><td>Which tier did the work: <span class="chip e">edge</span> <span class="chip c">cloud</span> <span class="chip h">human</span> or self</td></tr>
+        <tr><td>Cloud steps taken</td><td>How far up the ladder each fault needed to go</td></tr>
+        <tr><td>Messages dropped</td><td>Data lost during outages; buffering should push this to zero</td></tr>
+        <tr><td>Escalations</td><td>How often automation gave up</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <h3>Findings the design is set up to show</h3>
+    <ul>
+      <li>Edge healing recovers in seconds for problems the board can see in itself.</li>
+      <li>The cloud is slower but catches what the board can't judge alone, like a bad update when the self-test is off.</li>
+      <li>The cloud cannot fix the connection it depends on; network recovery always comes from the device or a person.</li>
+      <li>Approval mode adds human delay only to the risky steps.</li>
+      <li>Store-and-forward buffering keeps data loss near zero during outages.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <span class="eyebrow">Glossary</span>
+    <h2>Terms used above</h2>
+  </div>
+  <dl class="gloss">
+    <dt>Edge computing</dt><dd>Doing work on the device instead of in the cloud.</dd>
+    <dt>Telemetry</dt><dd>Health and status data the device sends on a schedule.</dd>
+    <dt>Direct method</dt><dd>A remote function call from the cloud that the device answers, such as <code>reboot</code>.</dd>
+    <dt>Device twin</dt><dd>A JSON document in IoT Hub holding the settings the cloud wants and the settings the device reports.</dd>
+    <dt>OTA update</dt><dd>Installing new firmware over the network.</dd>
+    <dt>Rollback</dt><dd>Booting back into the previous, working firmware.</dd>
+    <dt>Canary rollout</dt><dd>Updating one device first as a test before the rest of the fleet.</dd>
+    <dt>Escalation ladder</dt><dd>Fixes tried in order of disruption, ending with a person.</dd>
+    <dt>Circuit breaker</dt><dd>Stop automatic retries after too many attempts in a short time.</dd>
+    <dt>Exponential backoff</dt><dd>Waiting 1, 2, 4, 8 seconds between retries.</dd>
+    <dt>Store-and-forward</dt><dd>Saving data locally while offline and sending it once reconnected.</dd>
+    <dt>Fault injection</dt><dd>Breaking things on purpose to test recovery (chaos engineering).</dd>
+    <dt>MTTD / MTTR</dt><dd>Mean time to detect / mean time to recover.</dd>
+  </dl>
+</section>
+
+<footer>Code lives in the <span class="mono">autoheal_IoT</span> repository: <span class="mono">firmware/</span>, <span class="mono">cloud/</span>, <span class="mono">webapp/</span>, <span class="mono">controller/</span>. Timings in the walkthrough are estimates from configured thresholds, not measured results.</footer>
+
+</div>
+</body>
+</html>

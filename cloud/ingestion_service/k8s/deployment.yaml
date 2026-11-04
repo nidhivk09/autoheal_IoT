@@ -2,7 +2,10 @@
 #   kubectl create secret generic ingestion-service-secrets \
 #     --from-literal=IOTHUB_EVENTHUB_COMPATIBLE_CONNECTION_STRING=... \
 #     --from-literal=IOTHUB_EVENTHUB_COMPATIBLE_PATH=... \
-#     --from-literal=POSTGRES_URL=...
+#     --from-literal=POSTGRES_URL=... \
+#     --from-literal=DJANGO_INTERNAL_API_BASE=https://<webapp host> \
+#     --from-literal=INTERNAL_API_TOKEN=... \
+#     --from-literal=REMEDIATION_DISPATCH_URL='https://<func app>.azurewebsites.net/api/remediation_dispatcher?code=...'
 #   kubectl apply -f deployment.yaml
 #
 # Never commit real secret values - this manifest only references the
@@ -14,7 +17,10 @@ metadata:
   labels:
     app: ingestion-service
 spec:
+  # Exactly one: the per-device detector (detector.py) keeps state in memory.
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: ingestion-service

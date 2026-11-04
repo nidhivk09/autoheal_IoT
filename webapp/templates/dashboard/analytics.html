@@ -20,11 +20,14 @@
         <tr class="text-left border-b">
             <th class="py-2 pr-4">Fault type</th>
             <th class="py-2 pr-4">Mode</th>
+            <th class="py-2 pr-4">Edge</th>
             <th class="py-2 pr-4">n</th>
             <th class="py-2 pr-4">MTTR mean (s)</th>
             <th class="py-2 pr-4">MTTR median (s)</th>
             <th class="py-2 pr-4">MTTR std dev (s)</th>
             <th class="py-2 pr-4">MTTD mean (s)</th>
+            <th class="py-2 pr-4">Resolved by</th>
+            <th class="py-2 pr-4">Dropped msgs (mean)</th>
         </tr>
     </thead>
     <tbody>
@@ -32,17 +35,25 @@
         <tr class="border-b border-gray-100">
             <td class="py-2 pr-4">{{ row.fault_type }}</td>
             <td class="py-2 pr-4">{{ row.remediation_mode }}</td>
+            <td class="py-2 pr-4">{{ row.edge_healing }}</td>
             <td class="py-2 pr-4">{{ row.mttr.n }}</td>
             <td class="py-2 pr-4">{{ row.mttr.mean|default:"-" }}</td>
             <td class="py-2 pr-4">{{ row.mttr.median|default:"-" }}</td>
             <td class="py-2 pr-4">{{ row.mttr.stdev|default:"-" }}</td>
             <td class="py-2 pr-4">{{ row.mttd.mean|default:"-" }}</td>
+            <td class="py-2 pr-4 text-xs">{% for tier, n in row.resolved_by.items %}{{ tier }}: {{ n }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+            <td class="py-2 pr-4">{{ row.messages_dropped_mean|default:"-" }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="7" class="py-4 text-gray-500">No resolved incidents yet.</td></tr>
+        <tr><td colspan="10" class="py-4 text-gray-500">No resolved incidents yet.</td></tr>
         {% endfor %}
     </tbody>
 </table>
+
+<p class="text-sm text-gray-500 mb-8">
+    Trials only - {{ organic_count }} organic (non-injected) incident(s) and {{ unresolved_count }} unresolved
+    incident(s) are excluded. All rows are in the <a href="{% url 'dashboard:csv_export' %}" class="underline">CSV export</a>.
+</p>
 
 <h2 class="text-xl font-semibold mb-2">Run batch trial</h2>
 <form method="post" action="{% url 'dashboard:start_batch_trial' %}" class="bg-white rounded shadow p-6 max-w-lg space-y-4">
@@ -72,6 +83,14 @@
         </select>
     </div>
     <div>
+        <label class="block text-sm font-medium mb-1">Edge healing</label>
+        <select name="edge_healing" class="w-full border rounded px-3 py-2">
+            <option value="keep">Keep device's current setting</option>
+            <option value="on">On</option>
+            <option value="off">Off</option>
+        </select>
+    </div>
+    <div>
         <label class="block text-sm font-medium mb-1">Number of trials</label>
         <input type="number" name="num_trials" value="20" min="1" max="100" class="w-full border rounded px-3 py-2">
     </div>
@@ -79,13 +98,15 @@
         Run batch trial
     </button>
     <p class="text-xs text-gray-500">
-        Manual-mode batch trials use a scripted delay to stand in for human
-        response time (see docs/research_notes.md) rather than blocking on a
-        real person clicking "Resolve manually" N times.
+        Manual-mode trials (and approvals in approval mode) use a scripted delay
+        to stand in for human response time (see docs/research_notes.md) rather
+        than blocking on a real person clicking N times. Each trial waits for the
+        device to be healthy with no open incident before injecting.
     </p>
 </form>
 
 <script>
+const palette = ['#7c3aed', '#c4b5fd', '#0891b2', '#a5f3fc', '#d97706', '#fcd34d'];
 fetch("{% url 'dashboard:chart_data' %}")
     .then(r => r.json())
     .then(data => {
@@ -93,15 +114,15 @@ fetch("{% url 'dashboard:chart_data' %}")
             type: 'bar',
             data: {
                 labels: data.labels,
-                datasets: [{
-                    label: 'Mean MTTR (s)',
-                    data: data.means,
-                    backgroundColor: 'rgba(124, 58, 237, 0.6)',
-                }]
+                datasets: data.datasets.map((d, i) => ({
+                    label: d.label,
+                    data: d.means,
+                    backgroundColor: palette[i % palette.length],
+                })),
             },
             options: {
                 responsive: true,
-                plugins: { legend: { display: false }, title: { display: true, text: 'Mean MTTR by fault type / remediation mode' } },
+                plugins: { title: { display: true, text: 'Mean MTTR by fault type, per remediation mode / edge healing' } },
                 scales: { y: { beginAtZero: true, title: { display: true, text: 'seconds' } } }
             }
         });

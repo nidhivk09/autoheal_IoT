@@ -4,9 +4,6 @@ param location string = resourceGroup().location
 @description('Short project prefix used to derive resource names')
 param namePrefix string = 'selfheal'
 
-@description('Edge device id registered in IoT Hub')
-param edgeDeviceId string = 'rpi-01'
-
 @description('PostgreSQL administrator login')
 param postgresAdminLogin string = 'autoheal_admin'
 
@@ -21,6 +18,8 @@ var iotHubName = '${namePrefix}-iothub'
 var postgresServerName = '${namePrefix}-pg'
 var aksClusterName = '${namePrefix}-aks'
 var workspaceName = '${namePrefix}-logs'
+// storage account names: 3-24 lowercase alphanumerics, globally unique
+var firmwareStorageName = toLower(take('${replace(namePrefix, '-', '')}fw${uniqueString(resourceGroup().id)}', 24))
 
 module monitor 'monitor.bicep' = {
   name: 'deploy-monitor'
@@ -37,7 +36,6 @@ module iotHub 'iothub.bicep' = {
   params: {
     iotHubName: iotHubName
     location: location
-    edgeDeviceId: edgeDeviceId
   }
 }
 
@@ -48,6 +46,14 @@ module postgres 'postgres.bicep' = {
     location: location
     administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
+  }
+}
+
+module firmwareStorage 'storage.bicep' = {
+  name: 'deploy-firmware-storage'
+  params: {
+    storageAccountName: firmwareStorageName
+    location: location
   }
 }
 
@@ -66,4 +72,6 @@ output eventHubCompatibleEndpoint string = iotHub.outputs.eventHubCompatibleEndp
 output postgresServerFqdn string = postgres.outputs.fullyQualifiedDomainName
 output postgresDatabaseName string = postgres.outputs.databaseName
 output aksClusterName string = aks.outputs.clusterName
+output firmwareStorageAccountName string = firmwareStorage.outputs.storageAccountName
+output firmwareContainerName string = firmwareStorage.outputs.containerName
 output logAnalyticsWorkspaceId string = monitor.outputs.workspaceId

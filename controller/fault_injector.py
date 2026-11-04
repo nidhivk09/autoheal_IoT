@@ -1,156 +1,124 @@
 #!/usr/bin/env python3
 """
-SSH-based fault injection controller.
+Fault injection controller for the ESP32 fleet.
 
 Called from the Django `incidents` app (as an importable function) or
-standalone from the CLI for manual testing. Connects to the Raspberry Pi over
-SSH and runs the fault-injection commands from the build plan (Section 6).
+standalone from the CLI for manual testing. Faults are injected through IoT
+Hub direct methods handled by the firmware (firmware/src/faults.cpp), which
+replaces the Pi-era SSH + tc/systemctl/stress-ng approach - an ESP32 has no
+shell to SSH into.
 
-Commands that start a long-running background effect (resource_exhaustion)
-are launched with `&` and the SSH call returns immediately - the caller
-should record `injected_at = now()` right after `inject_fault()` returns,
-not after the fault "finishes", since the whole point is to time detection
-against the moment the fault started.
+The fault is still real on the device (WiFi really drops, the app task
+really hangs, memory really leaks), so detection is still observed from the
+outside; only the trigger channel changed. That's noted in
+docs/research_notes.md.
+
+Every call returns as soon as the device has acknowledged the fault - the
+caller should record `injected_at = now()` right after inject_fault()
+returns, not after the fault "finishes".
 """
 from __future__ import annotations
 
 import logging
-import os
-from dataclasses import dataclass
 
-import paramiko
 from dotenv import load_dotenv
+
+try:
+    from .iothub_rest import IoTHubService, MethodResult
+except ImportError:  # run as a script: python controller/fault_injector.py
+    from iothub_rest import IoTHubService, MethodResult
 
 load_dotenv()
 
 logger = logging.getLogger("fault_injector")
 
-INJECT_COMMANDS = {
-    "network_loss": "sudo tc qdisc add dev {iface} root netem loss 100%",
-    "process_crash": "sudo systemctl stop {service}",
-    "resource_exhaustion": "stress-ng --cpu 4 --vm 2 --vm-bytes 80% --timeout {duration}s > /tmp/stress-ng.log 2>&1 &",
-}
-
-CLEAR_COMMANDS = {
-    "network_loss": "sudo tc qdisc del dev {iface} root netem",
-    "process_crash": "sudo systemctl start {service}",
-    "resource_exhaustion": "pkill -f stress-ng || true",
-}
-
-# Faults that background themselves and should not block the SSH call on completion
-NON_BLOCKING_FAULTS = {"resource_exhaustion"}
+# Faults the firmware injects itself via the inject_fault direct method.
+DEVICE_FAULTS = {"network_loss", "task_hang", "memory_leak", "message_flood", "config_drift"}
+# bad_firmware is injected by pushing the deliberately broken build over OTA.
+OTA_FAULTS = {"bad_firmware"}
+ALL_FAULTS = DEVICE_FAULTS | OTA_FAULTS
 
 
-@dataclass
-class SSHConfig:
-    host: str
-    user: str
-    key_path: str
-    iface: str = "eth0"
-    service: str = "edge-agent.service"
-    resource_exhaustion_duration_seconds: int = 120
-
-    @classmethod
-    def from_env(cls) -> "SSHConfig":
-        host = os.environ.get("PI_SSH_HOST")
-        user = os.environ.get("PI_SSH_USER")
-        key_path = os.environ.get("PI_SSH_KEY_PATH")
-        if not all([host, user, key_path]):
-            raise RuntimeError(
-                "PI_SSH_HOST, PI_SSH_USER, and PI_SSH_KEY_PATH must all be set "
-                "(see .env.example)"
-            )
-        return cls(
-            host=host,
-            user=user,
-            key_path=key_path,
-            iface=os.environ.get("PI_NETWORK_IFACE", "eth0"),
-            service=os.environ.get("EDGE_AGENT_SYSTEMD_UNIT", "edge-agent.service"),
-        )
+def _describe(result: MethodResult) -> str:
+    return f"status={result.status} payload={result.payload}"
 
 
-def _connect(config: SSHConfig) -> paramiko.SSHClient:
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
-    client.load_system_host_keys()
-    client.connect(
-        hostname=config.host,
-        username=config.user,
-        key_filename=config.key_path,
-        timeout=10,
-    )
-    return client
+def inject_fault(
+    device_id: str,
+    fault_type: str,
+    params: dict | None = None,
+    hub: IoTHubService | None = None,
+) -> tuple[bool, str]:
+    """Triggers the given fault on the device. Returns (success, output).
 
-
-def _run_remote(client: paramiko.SSHClient, command: str, wait: bool) -> tuple[bool, str]:
-    logger.info("running on %s: %s", client.get_transport().getpeername()[0], command)
-    stdin, stdout, stderr = client.exec_command(command, timeout=15)
-
-    if not wait:
-        # don't block on exit status for background/long-running commands
-        return True, "(non-blocking, launched)"
-
-    exit_status = stdout.channel.recv_exit_status()
-    output = stdout.read().decode() + stderr.read().decode()
-    return exit_status == 0, output.strip()
-
-
-def _format_command(template: str, config: SSHConfig) -> str:
-    return template.format(
-        iface=config.iface,
-        service=config.service,
-        duration=config.resource_exhaustion_duration_seconds,
-    )
-
-
-def inject_fault(fault_type: str, config: SSHConfig | None = None) -> tuple[bool, str]:
-    """Triggers the given fault on the Pi. Returns (success, output).
-
-    Call this immediately before recording Incident.injected_at - it returns
-    as soon as the fault has been launched, not when it "completes".
+    params:
+      network_loss: {"duration_s": 30}
+      bad_firmware: {"url": <SAS URL of the bad build>, "version": "..."} (required)
     """
-    if fault_type not in INJECT_COMMANDS:
+    if fault_type not in ALL_FAULTS:
         raise ValueError(f"unknown fault_type: {fault_type}")
+    hub = hub or IoTHubService.from_env()
+    params = params or {}
 
-    config = config or SSHConfig.from_env()
-    command = _format_command(INJECT_COMMANDS[fault_type], config)
-    wait = fault_type not in NON_BLOCKING_FAULTS
+    if fault_type == "bad_firmware":
+        if not params.get("url"):
+            raise ValueError("bad_firmware needs params['url'] pointing at the bad build")
+        result = hub.invoke_method(device_id, "ota_update", {"url": params["url"], "version": params.get("version", "")})
+    else:
+        result = hub.invoke_method(device_id, "inject_fault", {"type": fault_type, **params})
 
-    client = _connect(config)
-    try:
-        return _run_remote(client, command, wait=wait)
-    finally:
-        client.close()
+    logger.info("inject %s on %s: %s", fault_type, device_id, _describe(result))
+    return result.ok, _describe(result)
 
 
-def clear_fault(fault_type: str, config: SSHConfig | None = None) -> tuple[bool, str]:
-    """Reverses a previously injected fault. Used by manual-mode trials and cleanup."""
-    if fault_type not in CLEAR_COMMANDS:
+def clear_fault(device_id: str, fault_type: str, hub: IoTHubService | None = None) -> tuple[bool, str]:
+    """Reverses a previously injected fault. Used by manual-mode resolution.
+
+    network_loss can't be cleared remotely while the device is offline (that's
+    the point of the fault); the simulated outage ends on its own.
+    """
+    if fault_type not in ALL_FAULTS:
         raise ValueError(f"unknown fault_type: {fault_type}")
+    hub = hub or IoTHubService.from_env()
 
-    config = config or SSHConfig.from_env()
-    command = _format_command(CLEAR_COMMANDS[fault_type], config)
+    if fault_type == "bad_firmware":
+        result = hub.invoke_method(device_id, "rollback_firmware")
+    else:
+        result = hub.invoke_method(device_id, "clear_fault", {"type": fault_type})
 
-    client = _connect(config)
-    try:
-        return _run_remote(client, command, wait=True)
-    finally:
-        client.close()
+    logger.info("clear %s on %s: %s", fault_type, device_id, _describe(result))
+    return result.ok, _describe(result)
+
+
+def get_health(device_id: str, hub: IoTHubService | None = None) -> MethodResult:
+    hub = hub or IoTHubService.from_env()
+    return hub.invoke_method(device_id, "get_health", timeout_s=10)
 
 
 def _main() -> int:
     import argparse
-    import sys
+    import json
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["inject", "clear"])
-    parser.add_argument("fault_type", choices=list(INJECT_COMMANDS.keys()))
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("action", choices=["inject", "clear", "health"])
+    parser.add_argument("device_id")
+    parser.add_argument("fault_type", nargs="?", choices=sorted(ALL_FAULTS))
+    parser.add_argument("--params", default="{}", help='JSON, e.g. \'{"duration_s": 45}\'')
     args = parser.parse_args()
 
-    fn = inject_fault if args.action == "inject" else clear_fault
-    ok, output = fn(args.fault_type)
+    if args.action == "health":
+        result = get_health(args.device_id)
+        print(json.dumps({"status": result.status, "payload": result.payload}, indent=2))
+        return 0 if result.ok else 1
+    if not args.fault_type:
+        parser.error("fault_type is required for inject/clear")
+
+    if args.action == "inject":
+        ok, output = inject_fault(args.device_id, args.fault_type, json.loads(args.params))
+    else:
+        ok, output = clear_fault(args.device_id, args.fault_type)
     print(output)
     return 0 if ok else 1
 

@@ -3,7 +3,9 @@
 
     <p class="{% if incident.detected_at %}text-green-700{% else %}text-gray-400{% endif %}">
         {% if incident.detected_at %}
-            Detected in <strong>{{ incident.mttd_seconds|floatformat:1 }}s</strong> ({{ incident.detected_at }})
+            Detected in <strong>{{ incident.mttd_seconds|floatformat:1 }}s</strong>
+            by {{ incident.get_detected_by_display|default:"?" }}
+            {% if incident.detection_signal %}(<span class="font-mono text-xs">{{ incident.detection_signal }}</span>){% endif %}
         {% else %}
             Waiting for detection...
         {% endif %}
@@ -17,11 +19,56 @@
         {% endif %}
     </p>
 
+    {% if incident.pending_action %}
+    <p class="text-yellow-700 font-semibold">Waiting for approval to run <span class="font-mono">{{ incident.pending_step }}</span></p>
+    {% elif incident.escalated_at and not incident.verified_healthy_at %}
+    <p class="text-red-700 font-semibold">Escalated to a human at {{ incident.escalated_at }}</p>
+    {% endif %}
+
     <p class="{% if incident.verified_healthy_at %}text-green-700 font-semibold{% else %}text-gray-400{% endif %}">
         {% if incident.verified_healthy_at %}
-            Recovered in <strong>{{ incident.mttr_seconds|floatformat:1 }}s</strong> total ({{ incident.verified_healthy_at }})
+            Recovered in <strong>{{ incident.mttr_seconds|floatformat:1 }}s</strong> total,
+            resolved by {{ incident.get_resolved_by_display|default:"?" }}
+            {% if incident.messages_dropped is not None %}&middot; {{ incident.messages_dropped }} message(s) dropped{% endif %}
         {% else %}
             Waiting for recovery...
         {% endif %}
     </p>
+</div>
+
+{% if actions %}
+<h3 class="font-semibold mt-5 mb-2 text-sm">Remediation timeline</h3>
+<table class="w-full text-xs">
+    <thead><tr class="text-left border-b"><th class="py-1 pr-3">Time</th><th class="py-1 pr-3">Tier</th><th class="py-1 pr-3">Action</th><th class="py-1 pr-3">OK</th><th class="py-1">Detail</th></tr></thead>
+    <tbody>
+        {% for a in actions %}
+        <tr class="border-b border-gray-100 align-top">
+            <td class="py-1 pr-3 whitespace-nowrap">{{ a.started_at|time:"H:i:s" }}</td>
+            <td class="py-1 pr-3">{{ a.tier }}</td>
+            <td class="py-1 pr-3 font-mono">{{ a.action }}</td>
+            <td class="py-1 pr-3">{{ a.success|yesno:"yes,no,-" }}</td>
+            <td class="py-1 text-gray-500 break-all">{{ a.detail|truncatechars:160 }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<div class="flex gap-3 mt-5">
+    {% if incident.pending_action and not incident.verified_healthy_at %}
+    <form method="post" action="{% url 'incidents:approve' incident.id %}">
+        {% csrf_token %}
+        <button type="submit" class="bg-yellow-600 text-white px-4 py-2 rounded font-semibold hover:bg-yellow-700">
+            Approve {{ incident.pending_step }}
+        </button>
+    </form>
+    {% endif %}
+    {% if can_resolve %}
+    <form method="post" action="{% url 'incidents:resolve' incident.id %}">
+        {% csrf_token %}
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700">
+            Resolve manually
+        </button>
+    </form>
+    {% endif %}
 </div>

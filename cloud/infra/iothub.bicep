@@ -4,9 +4,6 @@ param iotHubName string
 @description('Azure region')
 param location string
 
-@description('Device id for the physical Raspberry Pi')
-param edgeDeviceId string = 'rpi-01'
-
 @description('SKU - S1 minimum, required for direct methods and message routing')
 param skuName string = 'S1'
 
@@ -34,8 +31,8 @@ resource iotHub 'Microsoft.Devices/IotHubs@2023-06-30' = {
   }
 }
 
-// Device identity for the Pi is created out-of-band via:
-//   az iot hub device-identity create --hub-name <hub> --device-id rpi-01
+// Device identities for the ESP32 fleet are created out-of-band, one per board:
+//   az iot hub device-identity create --hub-name <hub> --device-id esp32-01
 // (Bicep does not manage individual device identities.)
 
 output iotHubName string = iotHub.name

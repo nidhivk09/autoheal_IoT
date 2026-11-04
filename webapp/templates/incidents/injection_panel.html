@@ -9,9 +9,10 @@
         <label class="block text-sm font-medium mb-1">Device</label>
         <select name="device_id" required class="w-full border rounded px-3 py-2">
             {% for device in devices %}
-            <option value="{{ device.device_id }}">{{ device.display_name }} ({{ device.device_id }})</option>
+            <option value="{{ device.device_id }}">{{ device.display_name }} ({{ device.device_id }}) &middot; edge healing {{ device.desired_edge_healing|yesno:"on,off" }}</option>
             {% endfor %}
         </select>
+        <p class="text-xs text-gray-500 mt-1">Edge healing is a per-device setting - change it on the device's page in the Fleet view.</p>
     </div>
     <div>
         <label class="block text-sm font-medium mb-1">Fault type</label>
@@ -29,6 +30,10 @@
             {% endfor %}
         </select>
     </div>
+    <div>
+        <label class="block text-sm font-medium mb-1">Outage duration (s) <span class="text-gray-500 font-normal">- network loss only</span></label>
+        <input type="number" name="duration_s" value="30" min="5" max="600" class="w-full border rounded px-3 py-2">
+    </div>
     <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded font-semibold hover:bg-red-700">
         Inject Fault
     </button>
@@ -41,6 +46,7 @@
             <th class="py-2 pr-4">Device</th>
             <th class="py-2 pr-4">Fault</th>
             <th class="py-2 pr-4">Mode</th>
+            <th class="py-2 pr-4">Edge</th>
             <th class="py-2 pr-4">Phase</th>
             <th class="py-2 pr-4">Injected at</th>
         </tr>
@@ -51,11 +57,12 @@
             <td class="py-2 pr-4"><a class="text-blue-600 hover:underline" href="{% url 'incidents:detail' incident.id %}">{{ incident.device.device_id }}</a></td>
             <td class="py-2 pr-4">{{ incident.get_fault_type_display }}</td>
             <td class="py-2 pr-4">{{ incident.get_remediation_mode_display }}</td>
+            <td class="py-2 pr-4">{{ incident.edge_healing|yesno:"on,off,-" }}</td>
             <td class="py-2 pr-4">{{ incident.phase }}</td>
             <td class="py-2 pr-4">{{ incident.injected_at }}</td>
         </tr>
         {% empty %}
-        <tr><td colspan="5" class="py-4 text-gray-500">No incidents yet.</td></tr>
+        <tr><td colspan="6" class="py-4 text-gray-500">No incidents yet.</td></tr>
         {% endfor %}
     </tbody>
 </table>

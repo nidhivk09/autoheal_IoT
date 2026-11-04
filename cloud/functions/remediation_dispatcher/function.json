@@ -9,6 +9,13 @@
       "methods": ["post"]
     },
     {
+      "type": "queue",
+      "direction": "out",
+      "name": "job",
+      "queueName": "remediation-jobs",
+      "connection": "AzureWebJobsStorage"
+    },
+    {
       "type": "http",
       "direction": "out",
       "name": "$return"

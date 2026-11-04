@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+COPY main.py detector.py ./
 
 # All configuration comes from environment variables (see .env.example at the
 # repo root) - injected via the AKS Deployment manifest / Kubernetes Secret,

@@ -11,4 +11,5 @@ urlpatterns = [
     path("<int:incident_id>/", views.detail, name="detail"),
     path("<int:incident_id>/status/", views.detail_status_partial, name="detail_status"),
     path("<int:incident_id>/resolve/", views.resolve_manually, name="resolve"),
+    path("<int:incident_id>/approve/", views.approve_action, name="approve"),
 ]

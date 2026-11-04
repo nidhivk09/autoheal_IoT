@@ -50,7 +50,6 @@ cloud/infra/*.json.bak
 
 # --- logs ---
 *.log
-edge_agent/*.log
 
 # --- docker ---
 *.env.docker

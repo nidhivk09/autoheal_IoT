@@ -12,7 +12,8 @@
 <body class="bg-gray-50 text-gray-900 min-h-screen">
     <nav class="bg-gray-900 text-white px-6 py-3 flex items-center gap-6">
         <span class="font-semibold">Self-Healing IoT</span>
-        <a href="{% url 'devices:list' %}" class="hover:text-blue-300">Devices</a>
+        <a href="{% url 'devices:list' %}" class="hover:text-blue-300">Fleet</a>
+        <a href="{% url 'devices:firmware' %}" class="hover:text-blue-300">Firmware</a>
         <a href="{% url 'incidents:panel' %}" class="hover:text-blue-300">Fault Injection</a>
         <a href="{% url 'incidents:log' %}" class="hover:text-blue-300">Incident Log</a>
         <a href="{% url 'dashboard:analytics' %}" class="hover:text-blue-300">Analytics</a>

@@ -124,10 +124,15 @@ REST_FRAMEWORK = {
 # --- Internal API auth (used by the Azure Function to write Incident rows) ---
 INTERNAL_API_TOKEN = os.environ.get("INTERNAL_API_TOKEN", "")
 
-# --- Fault injection controller (SSH to the Pi) ---
-PI_SSH_HOST = os.environ.get("PI_SSH_HOST", "")
-PI_SSH_USER = os.environ.get("PI_SSH_USER", "")
-PI_SSH_KEY_PATH = os.environ.get("PI_SSH_KEY_PATH", "")
+# --- IoT Hub service access (fault injection, twin config, rollouts) ---
+# Read directly from the environment by controller/iothub_rest.py and
+# controller/firmware_store.py; listed here so settings documents them all.
+IOTHUB_CONNECTION_STRING = os.environ.get("IOTHUB_CONNECTION_STRING", "")
+FIRMWARE_STORAGE_CONNECTION_STRING = os.environ.get("FIRMWARE_STORAGE_CONNECTION_STRING", "")
+
+# --- Remediation Function (approval-mode resumes) ---
+# The remediation_dispatcher HTTP trigger URL including its ?code= key.
+REMEDIATION_DISPATCH_URL = os.environ.get("REMEDIATION_DISPATCH_URL", "")
 
 # --- Background jobs (APScheduler) ---
 # Started explicitly from dashboard/apps.py so it only runs once, not once

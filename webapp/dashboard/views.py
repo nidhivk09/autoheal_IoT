@@ -1,5 +1,6 @@
 import csv
 import statistics
+from collections import Counter
 from itertools import groupby
 
 from django.http import HttpResponse, JsonResponse
@@ -7,11 +8,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from devices.models import Device
-from incidents.models import FaultType, Incident, RemediationMode
+from incidents.models import INJECTABLE_FAULT_TYPES, FaultType, Incident, RemediationMode
 
 
-def _resolved_incidents():
-    return Incident.objects.filter(verified_healthy_at__isnull=False).select_related("device")
+def _resolved_trial_incidents():
+    return (
+        Incident.objects.filter(verified_healthy_at__isnull=False)
+        .exclude(fault_type=FaultType.ORGANIC)
+        .select_related("device")
+    )
 
 
 def _stats_for(values: list[float]) -> dict:
@@ -27,22 +32,31 @@ def _stats_for(values: list[float]) -> dict:
     }
 
 
-def summary_stats() -> list[dict]:
-    """One row per (fault_type, remediation_mode) with MTTR/MTTD stats -
-    the table described in build plan Section 5, Phase 6.5."""
-    incidents = list(_resolved_incidents())
-    incidents.sort(key=lambda i: (i.fault_type, i.remediation_mode))
+def _edge_label(edge_healing: bool | None) -> str:
+    return {True: "on", False: "off"}.get(edge_healing, "n/a")
 
+
+def summary_stats() -> list[dict]:
+    """One row per (fault_type, remediation_mode, edge_healing) with
+    MTTR/MTTD stats and which tier resolved each incident - the table
+    described in build plan Section 5, Phase 6.5, extended with the edge
+    healing condition."""
+    def key(i):
+        return (i.fault_type, i.remediation_mode, _edge_label(i.edge_healing))
+
+    incidents = sorted(_resolved_trial_incidents(), key=key)
     rows = []
-    for (fault_type, mode), group in groupby(incidents, key=lambda i: (i.fault_type, i.remediation_mode)):
+    for (fault_type, mode, edge), group in groupby(incidents, key=key):
         group = list(group)
-        mttr_values = [i.mttr_seconds for i in group if i.mttr_seconds is not None]
-        mttd_values = [i.mttd_seconds for i in group if i.mttd_seconds is not None]
+        dropped = [i.messages_dropped for i in group if i.messages_dropped is not None]
         rows.append({
             "fault_type": fault_type,
             "remediation_mode": mode,
-            "mttr": _stats_for(mttr_values),
-            "mttd": _stats_for(mttd_values),
+            "edge_healing": edge,
+            "mttr": _stats_for([i.mttr_seconds for i in group if i.mttr_seconds is not None]),
+            "mttd": _stats_for([i.mttd_seconds for i in group if i.mttd_seconds is not None]),
+            "resolved_by": dict(Counter(i.resolved_by or "unknown" for i in group)),
+            "messages_dropped_mean": round(statistics.mean(dropped), 1) if dropped else None,
         })
     return rows
 
@@ -50,22 +64,31 @@ def summary_stats() -> list[dict]:
 def analytics(request):
     context = {
         "stats": summary_stats(),
-        "fault_types": FaultType.choices,
+        "fault_types": INJECTABLE_FAULT_TYPES,
         "remediation_modes": RemediationMode.choices,
         "devices": Device.objects.all(),
+        "organic_count": Incident.objects.filter(fault_type=FaultType.ORGANIC).count(),
+        "unresolved_count": Incident.objects.filter(verified_healthy_at__isnull=True).count(),
     }
     return render(request, "dashboard/analytics.html", context)
 
 
 def chart_data(request):
-    """JSON feed for the Chart.js MTTR comparison chart, polled/fetched from
-    dashboard/analytics.html - one bar per (fault_type, mode) with mean and
-    stdev so the frontend can draw error bars."""
+    """JSON feed for the Chart.js MTTR chart on dashboard/analytics.html:
+    fault types on the x axis, one bar series per (mode, edge healing)
+    condition, so edge-on vs edge-off sits side by side per fault."""
     rows = summary_stats()
-    labels = [f"{r['fault_type']} / {r['remediation_mode']}" for r in rows]
-    means = [r["mttr"]["mean"] for r in rows]
-    stdevs = [r["mttr"]["stdev"] for r in rows]
-    return JsonResponse({"labels": labels, "means": means, "stdevs": stdevs, "rows": rows})
+    fault_types = sorted({r["fault_type"] for r in rows})
+    conditions = sorted({(r["remediation_mode"], r["edge_healing"]) for r in rows})
+    by_key = {(r["fault_type"], r["remediation_mode"], r["edge_healing"]): r for r in rows}
+    datasets = []
+    for mode, edge in conditions:
+        datasets.append({
+            "label": f"{mode} · edge {edge}",
+            "means": [by_key.get((f, mode, edge), {}).get("mttr", {}).get("mean") for f in fault_types],
+            "stdevs": [by_key.get((f, mode, edge), {}).get("mttr", {}).get("stdev") for f in fault_types],
+        })
+    return JsonResponse({"labels": fault_types, "datasets": datasets, "rows": rows})
 
 
 def start_batch_trial(request):
@@ -73,9 +96,7 @@ def start_batch_trial(request):
         return redirect("dashboard:analytics")
 
     device = get_object_or_404(Device, device_id=request.POST["device_id"])
-    fault_type = request.POST["fault_type"]
-    remediation_mode = request.POST["remediation_mode"]
-    num_trials = int(request.POST.get("num_trials", 10))
+    edge_choice = request.POST.get("edge_healing", "keep")
 
     from . import scheduler
 
@@ -83,13 +104,18 @@ def start_batch_trial(request):
         scheduler.run_batch_trial,
         kwargs={
             "device_id": device.device_id,
-            "fault_type": fault_type,
-            "remediation_mode": remediation_mode,
-            "num_trials": num_trials,
+            "fault_type": request.POST["fault_type"],
+            "remediation_mode": request.POST["remediation_mode"],
+            "num_trials": int(request.POST.get("num_trials", 10)),
+            "edge_healing": {"on": True, "off": False}.get(edge_choice),
         },
     )
 
     return redirect(reverse("dashboard:analytics") + "?batch_started=1")
+
+
+def _iso(value) -> str:
+    return value.isoformat() if value else ""
 
 
 def csv_export(request):
@@ -99,21 +125,24 @@ def csv_export(request):
 
     writer = csv.writer(response)
     writer.writerow([
-        "id", "device_id", "fault_type", "remediation_mode", "trial_number",
+        "id", "device_id", "fault_type", "remediation_mode", "edge_healing", "trial_number",
         "injected_at", "detected_at", "remediation_started_at", "remediated_at",
-        "verified_healthy_at", "mttd_seconds", "mttr_seconds", "notes",
+        "verified_healthy_at", "escalated_at", "detected_by", "detection_signal", "resolved_by",
+        "messages_dropped", "mttd_seconds", "mttr_seconds", "cloud_actions", "notes",
     ])
-    for incident in Incident.objects.select_related("device").all():
+    incidents = Incident.objects.select_related("device").prefetch_related("actions")
+    for incident in incidents:
+        cloud_actions = ";".join(a.action for a in incident.actions.all() if a.tier == "cloud")
         writer.writerow([
             incident.id, incident.device.device_id, incident.fault_type,
-            incident.remediation_mode, incident.trial_number,
-            incident.injected_at.isoformat() if incident.injected_at else "",
-            incident.detected_at.isoformat() if incident.detected_at else "",
-            incident.remediation_started_at.isoformat() if incident.remediation_started_at else "",
-            incident.remediated_at.isoformat() if incident.remediated_at else "",
-            incident.verified_healthy_at.isoformat() if incident.verified_healthy_at else "",
+            incident.remediation_mode, _edge_label(incident.edge_healing), incident.trial_number,
+            _iso(incident.injected_at), _iso(incident.detected_at),
+            _iso(incident.remediation_started_at), _iso(incident.remediated_at),
+            _iso(incident.verified_healthy_at), _iso(incident.escalated_at),
+            incident.detected_by, incident.detection_signal, incident.resolved_by,
+            incident.messages_dropped if incident.messages_dropped is not None else "",
             incident.mttd_seconds if incident.mttd_seconds is not None else "",
             incident.mttr_seconds if incident.mttr_seconds is not None else "",
-            incident.notes,
+            cloud_actions, incident.notes,
         ])
     return response

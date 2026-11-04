@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Devices{% endblock %}
+{% block title %}Fleet{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-4">Devices</h1>
+<h1 class="text-2xl font-semibold mb-4">Fleet</h1>
 <div id="device-table"
      hx-get="{% url 'devices:list_partial' %}"
      hx-trigger="every 10s"

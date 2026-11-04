@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Firmware{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-4">Firmware &amp; OTA rollouts</h1>
+
+{% if storage_error %}
+<div class="bg-yellow-100 text-yellow-800 rounded px-4 py-2 mb-4 text-sm">
+    Could not list firmware releases: {{ storage_error }}
+</div>
+{% endif %}
+
+<div class="grid md:grid-cols-2 gap-6">
+    <div class="bg-white rounded shadow p-6">
+        <h2 class="font-semibold mb-3">Releases <span class="text-xs text-gray-500 font-normal">(blob storage, newest first)</span></h2>
+        <table class="w-full text-sm">
+            <thead><tr class="text-left border-b"><th class="py-1 pr-4">Version</th><th class="py-1 pr-4">Variant</th><th class="py-1 pr-4">Size</th><th class="py-1">Uploaded</th></tr></thead>
+            <tbody>
+                {% for r in releases %}
+                <tr class="border-b border-gray-100">
+                    <td class="py-1 pr-4 font-mono text-xs">{{ r.version }}</td>
+                    <td class="py-1 pr-4">{% if r.variant == "bad" %}<span class="text-red-700">bad (fault)</span>{% else %}good{% endif %}</td>
+                    <td class="py-1 pr-4">{{ r.size|filesizeformat }}</td>
+                    <td class="py-1">{{ r.uploaded_at }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="py-3 text-gray-500">No releases yet - run the build-firmware workflow.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <form method="post" action="{% url 'devices:start_rollout' %}" class="bg-white rounded shadow p-6 space-y-4">
+        {% csrf_token %}
+        <h2 class="font-semibold">Start a canary rollout</h2>
+        <div>
+            <label class="block text-sm font-medium mb-1">Release</label>
+            <select name="blob_name" required class="w-full border rounded px-3 py-2">
+                {% for r in releases %}
+                <option value="{{ r.blob_name }}">{{ r.version }}{% if r.variant == "bad" %} (bad build){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium mb-1">Devices</label>
+            {% for device in devices %}
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="device_ids" value="{{ device.device_id }}" checked>
+                {{ device.device_id }} <span class="text-gray-400 font-mono text-xs">{{ device.firmware_version }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div>
+            <label class="block text-sm font-medium mb-1">Canary (updated first)</label>
+            <select name="canary_device_id" class="w-full border rounded px-3 py-2">
+                {% for device in devices %}
+                <option value="{{ device.device_id }}">{{ device.device_id }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700">Start rollout</button>
+        <p class="text-xs text-gray-500">
+            Devices update one at a time. The rollout halts if a device rolls itself back or isn't healthy on the
+            new version within 4 minutes, leaving the rest of the fleet untouched.
+        </p>
+    </form>
+</div>
+
+<h2 class="text-xl font-semibold mt-8 mb-2">Recent rollouts</h2>
+{% for rollout in rollouts %}
+<div class="bg-white rounded shadow p-4 mb-3">
+    <p class="font-medium">
+        {{ rollout.version }} &middot;
+        <span class="{% if rollout.status == 'completed' %}text-green-700{% elif rollout.status == 'halted' %}text-red-700{% else %}text-blue-700{% endif %}">{{ rollout.status }}</span>
+        <span class="text-gray-500 text-sm">&middot; {{ rollout.created_at }}</span>
+    </p>
+    <pre class="text-xs bg-gray-50 rounded p-2 mt-2 whitespace-pre-wrap">{{ rollout.log|default:"(no log yet)" }}</pre>
+</div>
+{% empty %}
+<p class="text-sm text-gray-500">No rollouts yet.</p>
+{% endfor %}
+{% endblock %}
