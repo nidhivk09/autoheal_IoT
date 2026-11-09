@@ -136,7 +136,7 @@ AZURE_CLIENT_ID=               # leave blank for local dev (your `az login` is u
 AZURE_CLIENT_SECRET=           # leave blank for local dev
 AZURE_RESOURCE_GROUP=rg-selfhealing-iot
 AZURE_IOTHUB_NAME=selfheal-iothub
-AZURE_AKS_CLUSTER_NAME=selfheal-aks    # not in .env.example, add this line yourself
+AZURE_AKS_CLUSTER_NAME=selfheal-aks
 
 # --- Firmware storage ---
 FIRMWARE_STORAGE_CONNECTION_STRING=    # az storage account show-connection-string -g rg-selfhealing-iot -n <selfhealfw...> -o tsv
