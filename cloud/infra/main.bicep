@@ -1,6 +1,9 @@
 @description('Azure region for all resources')
 param location string = resourceGroup().location
 
+@description('Region for PostgreSQL only - some subscriptions get SkuNotAvailable for Postgres in a region where everything else works')
+param postgresLocation string = location
+
 @description('Short project prefix used to derive resource names')
 param namePrefix string = 'selfheal'
 
@@ -43,7 +46,7 @@ module postgres 'postgres.bicep' = {
   name: 'deploy-postgres'
   params: {
     serverName: postgresServerName
-    location: location
+    location: postgresLocation
     administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
   }

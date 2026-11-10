@@ -103,8 +103,8 @@ for your own IP address:
 ```bash
 MYIP=$(curl -s https://api.ipify.org)
 az postgres flexible-server firewall-rule create \
-  -g rg-selfhealing-iot -n selfheal-pg \
-  --rule-name my-laptop --start-ip-address $MYIP --end-ip-address $MYIP
+  -g rg-selfhealing-iot --server-name selfheal-pg \
+  --name my-laptop --start-ip-address $MYIP --end-ip-address $MYIP
 ```
 
 Repeat this whenever your IP changes, for example on different Wi-Fi.

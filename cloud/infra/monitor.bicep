@@ -21,9 +21,14 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
+// diagnosticSettings needs a resource reference (not an id string) as scope
+resource iotHub 'Microsoft.Devices/IotHubs@2023-06-30' existing = {
+  name: last(split(iotHubId, '/'))
+}
+
 resource iotHubDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
   name: 'iothub-to-loganalytics'
-  scope: resourceId('Microsoft.Devices/IotHubs', last(split(iotHubId, '/')))
+  scope: iotHub
   properties: {
     workspaceId: workspace.id
     logs: [
