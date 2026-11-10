@@ -10,7 +10,16 @@ working system. It has two stages:
 - **Part B (step 10): full cloud deploy.** Optional. Moves the three
   services into Azure (Function App, AKS, Container Apps).
 
-Commands assume macOS/Linux with zsh/bash. On Windows, use WSL.
+Commands assume macOS/Linux with zsh/bash. **On Windows, see
+[Appendix: Windows](#appendix-windows-powershell)** for the PowerShell versions.
+
+> **Use Python 3.11 for every virtual environment** (`python3.11 -m venv .venv`).
+> If your default `python3` is 3.13 or 3.14, `python3 -m venv` may fail or
+> some packages won't install.
+
+> **zsh tip:** pasting command blocks that contain `# comments` into zsh
+> fails with "command not found: #" unless you first run
+> `setopt interactivecomments`.
 
 > **Cost warning:** `main.bicep` creates an IoT Hub S1, a Postgres B1ms
 > server and an AKS cluster with **2 × B2s nodes**. Together that's roughly
@@ -29,8 +38,8 @@ Commands assume macOS/Linux with zsh/bash. On Windows, use WSL.
 | Git | `xcode-select --install` | cloning the repo |
 | Python 3.11 | `brew install python@3.11` | Django, ingestion service, Function |
 | Azure CLI | `brew install azure-cli` | creating everything in Azure |
-| Azure IoT CLI extension | `az extension add --name azure-iot` | device identities, connection strings |
-| Azure Functions Core Tools v4 | `brew tap azure/functions && brew install azure-functions-core-tools@4` | running the Function locally |
+| Azure IoT CLI extension (optional) | `az extension add --name azure-iot` | creating devices from the CLI. Often fails to install (404 or pip errors); everything below works without it |
+| Azure Functions Core Tools v4 | `npm install -g azure-functions-core-tools@4 --unsafe-perm true` (needs Node.js), or `brew tap azure/functions && brew trust azure/functions && brew install azure-functions-core-tools@4` | running the Function locally |
 | PostgreSQL client (optional) | `brew install libpq` | `psql` for checking the DB |
 | PlatformIO + pyserial | `pip install platformio pyserial` | building and flashing the ESP32 |
 | USB-serial driver | CP210x or CH340, depending on the board | talking to the ESP32 |
@@ -56,8 +65,10 @@ for p in Microsoft.Devices Microsoft.DBforPostgreSQL Microsoft.ContainerService 
   az provider register --namespace $p
 done
 
-az group create -n rg-selfhealing-iot -l centralindia   # or any region near you
+az group create -n rg-selfhealing-iot -l centralindia
 ```
+
+(Use any region near you instead of `centralindia`.)
 
 > Student and free subscriptions sometimes block Postgres or AKS in some
 > regions. If the deploy in the next step fails with a "location is
@@ -66,8 +77,9 @@ az group create -n rg-selfhealing-iot -l centralindia   # or any region near you
 
 ## 3. Deploy the Azure infrastructure (IoT Hub, Postgres, storage, AKS, monitoring)
 
-Choose a strong Postgres admin password and **write it down**. You need it
-again for `POSTGRES_URL`.
+Choose your own Postgres admin password and **write it down**; you need it
+again in step 5. Don't copy the placeholder below literally. Azure requires
+three of: uppercase, lowercase, digits, symbols.
 
 ```bash
 az deployment group create \
@@ -76,6 +88,18 @@ az deployment group create \
   --template-file cloud/infra/main.bicep \
   --parameters postgresAdminPassword='<YourStrongPassword123!>'
 ```
+
+If it fails with **`SkuNotAvailable`** for Postgres (common on student
+subscriptions), put just Postgres in another region and run it again. The
+parts that already succeeded are left as they are:
+
+```bash
+az deployment group create -g rg-selfhealing-iot -n main \
+  --template-file cloud/infra/main.bicep \
+  --parameters postgresAdminPassword='<same password>' postgresLocation=southindia
+```
+
+(If `southindia` also fails, try `eastus` or `southeastasia`.)
 
 The deploy takes 10–20 minutes, mostly waiting for AKS. When it finishes,
 print the outputs:
@@ -114,52 +138,55 @@ instead with `brew install postgresql@16 && brew services start postgresql@16 &&
 
 ## 5. Create the `.env` file
 
+Run this from the repo root. It fetches every value from Azure (no
+`azure-iot` extension needed), generates the random secrets, and writes
+`.env` without printing any secrets. It asks for the Postgres password from
+step 3.
+
 ```bash
-cp .env.example .env
-```
-
-Fill in each value as follows:
-
-```bash
-# --- IoT Hub ---
-IOTHUB_CONNECTION_STRING=      # az iot hub connection-string show -n selfheal-iothub --policy-name iothubowner -o tsv
-
-# --- Database ---
-POSTGRES_URL=postgresql://autoheal_admin:<password from step 3>@selfheal-pg.postgres.database.azure.com:5432/autoheal?sslmode=require
-#   If the password has special characters (@ : / # ? &), URL-encode them, e.g.
-#   python3 -c "import urllib.parse; print(urllib.parse.quote('<password>', safe=''))"
-
-# --- Azure ---
-AZURE_SUBSCRIPTION_ID=         # az account show --query id -o tsv
-AZURE_TENANT_ID=               # az account show --query tenantId -o tsv
-AZURE_CLIENT_ID=               # leave blank for local dev (your `az login` is used)
-AZURE_CLIENT_SECRET=           # leave blank for local dev
-AZURE_RESOURCE_GROUP=rg-selfhealing-iot
-AZURE_IOTHUB_NAME=selfheal-iothub
+read -s "PGPASS?Postgres password: "; echo
+RG=rg-selfhealing-iot; HUB=selfheal-iothub
+FWACCT=$(az storage account list -g $RG --query "[?starts_with(name,'selfhealfw')].name | [0]" -o tsv)
+PGPASS_ENC=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$PGPASS")
+HUBKEY=$(az iot hub policy show --hub-name $HUB -n iothubowner --query primaryKey -o tsv 2>/dev/null)
+HUBHOST=$(az iot hub show -n $HUB --query properties.hostName -o tsv 2>/dev/null)
+EHEP=$(az iot hub show -n $HUB --query properties.eventHubEndpoints.events.endpoint -o tsv 2>/dev/null)
+EHPATH=$(az iot hub show -n $HUB --query properties.eventHubEndpoints.events.path -o tsv 2>/dev/null)
+cat > .env <<EOF
+IOTHUB_CONNECTION_STRING=HostName=${HUBHOST};SharedAccessKeyName=iothubowner;SharedAccessKey=${HUBKEY}
+POSTGRES_URL=postgresql://autoheal_admin:${PGPASS_ENC}@selfheal-pg.postgres.database.azure.com:5432/autoheal?sslmode=require
+AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)
+AZURE_CLIENT_ID=
+AZURE_CLIENT_SECRET=
+AZURE_RESOURCE_GROUP=$RG
+AZURE_IOTHUB_NAME=$HUB
 AZURE_AKS_CLUSTER_NAME=selfheal-aks
-
-# --- Firmware storage ---
-FIRMWARE_STORAGE_CONNECTION_STRING=    # az storage account show-connection-string -g rg-selfhealing-iot -n <selfhealfw...> -o tsv
+FIRMWARE_STORAGE_CONNECTION_STRING=$(az storage account show-connection-string -g $RG -n $FWACCT -o tsv 2>/dev/null)
 FIRMWARE_CONTAINER=firmware
-
-# --- Django ---
-DJANGO_SECRET_KEY=             # python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+DJANGO_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(50))")
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-
-# --- Internal API (pick any random string, same everywhere) ---
-INTERNAL_API_TOKEN=            # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+INTERNAL_API_TOKEN=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 DJANGO_INTERNAL_API_BASE=http://localhost:8000
-
-# --- Remediation Function (running locally in step 7) ---
 REMEDIATION_DISPATCH_URL=http://localhost:7071/api/remediation_dispatcher
-ESCALATION_WEBHOOK_URL=        # optional: Slack/Discord/Teams incoming webhook URL
+ESCALATION_WEBHOOK_URL=
 DASHBOARD_BASE_URL=http://localhost:8000
-
-# --- Ingestion service ---
-IOTHUB_EVENTHUB_COMPATIBLE_CONNECTION_STRING=   # az iot hub connection-string show -n selfheal-iothub --default-eventhub -o tsv
-IOTHUB_EVENTHUB_COMPATIBLE_PATH=                # az iot hub show -n selfheal-iothub --query properties.eventHubEndpoints.events.path -o tsv
+IOTHUB_EVENTHUB_COMPATIBLE_CONNECTION_STRING=Endpoint=${EHEP};SharedAccessKeyName=iothubowner;SharedAccessKey=${HUBKEY};EntityPath=${EHPATH}
+IOTHUB_EVENTHUB_COMPATIBLE_PATH=${EHPATH}
+EOF
+grep -E "=$" .env | cut -d= -f1
 ```
+
+The last line lists the variables that ended up empty. It's fine to see
+`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `ESCALATION_WEBHOOK_URL` and
+`IOTHUB_CONNECTION_STRING` (that one only *looks* empty because its key
+ends in `=`). Anything else empty means an Azure lookup failed. Re-run
+`az login` and try again.
+
+`ESCALATION_WEBHOOK_URL` is optional: a Slack/Discord/Teams incoming
+webhook URL for human escalation. See `.env.example` for what each variable
+is used for.
 
 Never commit `.env`. It's already listed in `.gitignore`.
 
@@ -176,32 +203,30 @@ python manage.py runserver
 
 Open <http://localhost:8000> and log in. Leave this terminal running.
 
+`createsuperuser` asks for any username, email (optional) and password you
+like. It's your dashboard login.
+
 If `migrate` hangs or times out, check two things: that the firewall rule
 from step 4 is in place, and that `POSTGRES_URL` ends in `?sslmode=require`.
 
 ## 7. Run the remediation Function locally
 
 The Functions host doesn't read `.env`, so its settings go in
-`cloud/functions/local.settings.json`. That file is gitignored, so create it
-yourself:
+`cloud/functions/local.settings.json`. That file is gitignored. Generate it
+from `.env` by running this from the repo root:
 
-```json
-{
-  "IsEncrypted": false,
-  "Values": {
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "AzureWebJobsStorage": "<same value as FIRMWARE_STORAGE_CONNECTION_STRING>",
-    "IOTHUB_CONNECTION_STRING": "<from .env>",
-    "DJANGO_INTERNAL_API_BASE": "http://localhost:8000",
-    "INTERNAL_API_TOKEN": "<from .env>",
-    "DASHBOARD_BASE_URL": "http://localhost:8000",
-    "ESCALATION_WEBHOOK_URL": "",
-    "AZURE_SUBSCRIPTION_ID": "<from .env>",
-    "AZURE_RESOURCE_GROUP": "rg-selfhealing-iot",
-    "AZURE_IOTHUB_NAME": "selfheal-iothub",
-    "AZURE_AKS_CLUSTER_NAME": "selfheal-aks"
-  }
-}
+```bash
+python3 - <<'EOF'
+import json
+env = dict(l.split("=", 1) for l in open(".env").read().splitlines() if "=" in l and not l.startswith("#"))
+keys = ["IOTHUB_CONNECTION_STRING","DJANGO_INTERNAL_API_BASE","INTERNAL_API_TOKEN","DASHBOARD_BASE_URL",
+        "ESCALATION_WEBHOOK_URL","AZURE_SUBSCRIPTION_ID","AZURE_RESOURCE_GROUP","AZURE_IOTHUB_NAME","AZURE_AKS_CLUSTER_NAME"]
+values = {"FUNCTIONS_WORKER_RUNTIME": "python",
+          "AzureWebJobsStorage": env["FIRMWARE_STORAGE_CONNECTION_STRING"],
+          **{k: env.get(k, "") for k in keys}}
+json.dump({"IsEncrypted": False, "Values": values}, open("cloud/functions/local.settings.json", "w"), indent=2)
+print("wrote cloud/functions/local.settings.json")
+EOF
 ```
 
 Then, in a new terminal:
@@ -210,8 +235,13 @@ Then, in a new terminal:
 cd cloud/functions
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-func start          # serves http://localhost:7071/api/remediation_dispatcher
+func start
 ```
+
+It's working when it lists
+`remediation_dispatcher: [POST] http://localhost:7071/api/remediation_dispatcher`
+and `remediation_worker: queueTrigger` with no `ModuleNotFoundError` above.
+Leave it running.
 
 The function's job queue (`remediation-jobs`) is created automatically in
 that storage account.
@@ -231,21 +261,30 @@ python main.py
 
 ## 9. Flash and provision the ESP32 boards
 
-Create one IoT Hub identity per board:
+Create one IoT Hub identity per board in the Portal: **IoT Hub
+`selfheal-iothub` → Devices → Add device**, set the Device ID to `esp32-01`
+(keep "Symmetric key" and "Auto-generate keys"), and save. Open the device and
+copy its **Primary key**.
 
-```bash
-az iot hub device-identity create --hub-name selfheal-iothub --device-id esp32-01
-```
+(If the `azure-iot` CLI extension did install for you, you can use
+`az iot hub device-identity create --hub-name selfheal-iothub --device-id esp32-01`
+instead, and leave out `--device-key` below.)
 
 Plug in the board and find its serial port with `ls /dev/cu.*`. Then:
 
 ```bash
 cd firmware
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install platformio pyserial
 pio run -e esp32dev -t upload
 python scripts/provision.py --port /dev/cu.usbserial-XXXX \
-    --ssid "<wifi name>" --hub-name selfheal-iothub --device-id esp32-01
-pio device monitor        # should show WiFi + IoT Hub connected
+    --ssid "<wifi name>" --hub-name selfheal-iothub --device-id esp32-01 \
+    --device-key "<primary key from the Portal>"
+pio device monitor
 ```
+
+`provision.py` asks for the WiFi password. `pio device monitor` should show
+WiFi and then IoT Hub connecting; press Ctrl+C to exit it.
 
 The WiFi must be **2.4 GHz** because the ESP32 can't connect to 5 GHz-only
 networks. Within about a minute the device appears on the dashboard's
@@ -387,3 +426,110 @@ workflow file: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
 | Incidents open but nothing is remediated | Function not running, or `REMEDIATION_DISPATCH_URL` / `INTERNAL_API_TOKEN` differ between services |
 | `KeyError: 'AZURE_AKS_CLUSTER_NAME'` in the Function | Add it to `local.settings.json` / app settings |
 | Deploy fails with "location is restricted" or a quota error | Use a different region (step 2) |
+| `SkuNotAvailable` for Postgres | Re-run step 3 with `postgresLocation=<other region>` |
+| `az extension add --name azure-iot` fails with 404 or "Pip failed" | Skip it; steps 5 and 9 don't need it |
+| `az ...` command seems to hang | It's waiting on a hidden "install extension?" prompt. Press Ctrl+C |
+| `python3 -m venv` fails with an `ensurepip` error | Your default Python is too new; use `python3.11 -m venv .venv` (delete the broken `.venv` first) |
+| `zsh: command not found: python` | The venv isn't active; run `source .venv/bin/activate` |
+| `brew` says "Refusing to load formula ... from untrusted tap" | `brew trust azure/functions`, or install Core Tools with npm (step 1) |
+| `brew` says "Command Line Tools are too outdated" | Update them in System Settings → Software Update, or install Core Tools with npm |
+| `func start` shows `ModuleNotFoundError` | `pip install -r requirements.txt` failed; activate the venv, re-run it, and read the first error |
+
+---
+
+## Appendix: Windows (PowerShell)
+
+Use native PowerShell, not WSL; flashing the ESP32 from WSL needs extra USB
+passthrough setup. The steps are the same as above; only the commands differ.
+
+**Installing tools.** If `winget` works:
+
+```powershell
+winget install Git.Git
+winget install Python.Python.3.11
+winget install Microsoft.AzureCLI
+winget install Microsoft.Azure.FunctionsCoreTools
+```
+
+If `winget` isn't recognized, install **App Installer** from the Microsoft
+Store (that's what provides winget), or download each installer directly:
+
+| Tool | Download | Note |
+|---|---|---|
+| Git | https://git-scm.com/download/win | defaults are fine |
+| Python 3.11 | https://www.python.org/downloads/windows/ (latest 3.11.x, 64-bit) | tick **"Add python.exe to PATH"** |
+| Azure CLI | https://aka.ms/installazurecliwindowsx64 | |
+| Functions Core Tools v4 | https://go.microsoft.com/fwlink/?linkid=2174087 | |
+| ESP32 USB driver | Silicon Labs "CP210x VCP driver", or "CH341SER" | match the chip on the board |
+
+Close and reopen PowerShell, then:
+
+```powershell
+py -3.11 -m pip install platformio pyserial
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+**Differences from the bash commands:**
+
+| bash (above) | PowerShell |
+|---|---|
+| `python3.11 -m venv .venv && source .venv/bin/activate` | `py -3.11 -m venv .venv; .\.venv\Scripts\Activate.ps1` |
+| `for p in A B C; do az provider register --namespace $p; done` | `foreach ($p in "A","B","C") { az provider register --namespace $p }` |
+| line continuation `\` | backtick `` ` ``, or put the command on one line |
+| `MYIP=$(curl -s https://api.ipify.org)` | `$MYIP = Invoke-RestMethod https://api.ipify.org` |
+| `cp .env.example .env` | `Copy-Item .env.example .env` |
+| `/dev/cu.usbserial-XXXX` | `COM3` (see Device Manager → Ports) |
+| `/tmp/...` | `$env:TEMP\...` |
+
+**Step 5 (`.env`) in PowerShell:**
+
+```powershell
+$RG="rg-selfhealing-iot"; $HUB="selfheal-iothub"
+$PGPASS = Read-Host "Postgres password"
+$PGENC = py -3.11 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" $PGPASS
+$FW = az storage account list -g $RG --query "[?starts_with(name,'selfhealfw')].name | [0]" -o tsv
+$KEY = az iot hub policy show --hub-name $HUB -n iothubowner --query primaryKey -o tsv
+$HOST_ = az iot hub show -n $HUB --query properties.hostName -o tsv
+$EHEP = az iot hub show -n $HUB --query properties.eventHubEndpoints.events.endpoint -o tsv
+$EHPATH = az iot hub show -n $HUB --query properties.eventHubEndpoints.events.path -o tsv
+$SUB = az account show --query id -o tsv
+$TEN = az account show --query tenantId -o tsv
+$FWCS = az storage account show-connection-string -g $RG -n $FW -o tsv
+$SECRET = py -3.11 -c "import secrets; print(secrets.token_urlsafe(50))"
+$TOKEN = py -3.11 -c "import secrets; print(secrets.token_urlsafe(32))"
+@"
+IOTHUB_CONNECTION_STRING=HostName=$HOST_;SharedAccessKeyName=iothubowner;SharedAccessKey=$KEY
+POSTGRES_URL=postgresql://autoheal_admin:$PGENC@selfheal-pg.postgres.database.azure.com:5432/autoheal?sslmode=require
+AZURE_SUBSCRIPTION_ID=$SUB
+AZURE_TENANT_ID=$TEN
+AZURE_CLIENT_ID=
+AZURE_CLIENT_SECRET=
+AZURE_RESOURCE_GROUP=$RG
+AZURE_IOTHUB_NAME=$HUB
+AZURE_AKS_CLUSTER_NAME=selfheal-aks
+FIRMWARE_STORAGE_CONNECTION_STRING=$FWCS
+FIRMWARE_CONTAINER=firmware
+DJANGO_SECRET_KEY=$SECRET
+DJANGO_DEBUG=True
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+INTERNAL_API_TOKEN=$TOKEN
+DJANGO_INTERNAL_API_BASE=http://localhost:8000
+REMEDIATION_DISPATCH_URL=http://localhost:7071/api/remediation_dispatcher
+ESCALATION_WEBHOOK_URL=
+DASHBOARD_BASE_URL=http://localhost:8000
+IOTHUB_EVENTHUB_COMPATIBLE_CONNECTION_STRING=Endpoint=$EHEP;SharedAccessKeyName=iothubowner;SharedAccessKey=$KEY;EntityPath=$EHPATH
+IOTHUB_EVENTHUB_COMPATIBLE_PATH=$EHPATH
+"@ | Set-Content -Encoding ascii .env
+```
+
+For step 7, run the same Python snippet with `py -3.11 -` and paste the code
+(between `<<'EOF'` and `EOF`), then press Ctrl+Z and Enter.
+
+**Step 9:** always pass `--device-key` to `provision.py`; without it, the
+script tries to call `az` itself, which fails on Windows.
+
+**Windows gotchas:**
+- **`python` opens the Microsoft Store:** use `py -3.11`, or turn off the
+  Python "App execution aliases" in Settings.
+- **"Activate.ps1 cannot be loaded":** run the `Set-ExecutionPolicy` line above.
+- **`pio` not found:** use `py -3.11 -m platformio`.
