@@ -24,6 +24,18 @@ resource iotHub 'Microsoft.Devices/IotHubs@2023-06-30' = {
         partitionCount: 4
       }
     }
+    // Without an enabled fallback route (and no custom routes), IoT Hub
+    // accepts device telemetry and then drops it instead of delivering it to
+    // the built-in 'events' endpoint the ingestion service reads.
+    routing: {
+      fallbackRoute: {
+        name: '$fallback'
+        source: 'DeviceMessages'
+        condition: 'true'
+        endpointNames: ['events']
+        isEnabled: true
+      }
+    }
     cloudToDevice: {
       maxDeliveryCount: 10
       defaultTtlAsIso8601: 'PT1H'

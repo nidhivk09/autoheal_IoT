@@ -13,12 +13,35 @@ Kinds of job that live here:
      (devices/rollout.py) and manual incident resolution
      (incidents/services.py:resolve_incident_now).
 """
+import functools
 import logging
 import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from django.db import close_old_connections
 
 logger = logging.getLogger(__name__)
+
+
+def _with_fresh_db(func):
+    """Django only recycles DB connections around HTTP requests. Scheduler
+    jobs run in long-lived worker threads, so without this a connection the
+    server dropped (Azure Postgres closes idle ones) is reused forever and
+    every run fails with InterfaceError: connection already closed."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        close_old_connections()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            close_old_connections()
+    return wrapper
+
+
+class _DjangoScheduler(BackgroundScheduler):
+    def add_job(self, func, *args, **kwargs):
+        return super().add_job(_with_fresh_db(func), *args, **kwargs)
+
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -39,7 +62,7 @@ def start() -> BackgroundScheduler:
     if _scheduler is not None:
         return _scheduler
 
-    _scheduler = BackgroundScheduler(daemon=True)
+    _scheduler = _DjangoScheduler(daemon=True)
     _scheduler.add_job(
         sweep_stale_devices,
         "interval",

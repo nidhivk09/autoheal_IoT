@@ -423,6 +423,9 @@ workflow file: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
 | `migrate` hangs or "connection timed out" | Postgres firewall (step 4), or the server is stopped (`az postgres flexible-server start ...`) |
 | `password authentication failed` | Wrong password, or special characters in the password that need URL-encoding |
 | Device never appears on Fleet | Check `pio device monitor`: 5 GHz WiFi, wrong hub name or device ID, or the ingestion service isn't running |
+| Device is Connected in IoT Hub but never appears on Fleet, and ingestion logs no `processed batch` | The hub's fallback route is disabled, so messages are dropped. Run `az iot hub update -n selfheal-iothub --set properties.routing.fallbackRoute.isEnabled=true` (new deploys already include this) |
+| Django logs `InterfaceError: connection already closed` | Fixed in `dashboard/scheduler.py`; `git pull` and restart `runserver` |
+| Board stuck on "connecting to WiFi" | Use a 2.4 GHz network; a phone hotspot with "Maximize Compatibility" (iPhone) or the 2.4 GHz band (Android) is easiest. Then re-run `provision.py` |
 | Incidents open but nothing is remediated | Function not running, or `REMEDIATION_DISPATCH_URL` / `INTERNAL_API_TOKEN` differ between services |
 | `KeyError: 'AZURE_AKS_CLUSTER_NAME'` in the Function | Add it to `local.settings.json` / app settings |
 | Deploy fails with "location is restricted" or a quota error | Use a different region (step 2) |
