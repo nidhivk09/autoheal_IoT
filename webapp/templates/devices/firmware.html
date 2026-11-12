@@ -1,81 +1,92 @@
 {% extends "base.html" %}
 {% block title %}Firmware{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-4">Firmware &amp; OTA rollouts</h1>
+<div class="mb-8">
+    <h1 class="page-title">Firmware &amp; OTA rollouts</h1>
+    <p class="page-sub">Signed builds in Azure Blob Storage, rolled out one device at a time with a canary and automatic halt.</p>
+</div>
 
 {% if storage_error %}
-<div class="bg-yellow-100 text-yellow-800 rounded px-4 py-2 mb-4 text-sm">
+<div class="rounded-lg border border-warn/20 bg-warn-soft text-warn px-4 py-3 mb-6 text-sm">
     Could not list firmware releases: {{ storage_error }}
 </div>
 {% endif %}
 
-<div class="grid md:grid-cols-2 gap-6">
-    <div class="bg-white rounded shadow p-6">
-        <h2 class="font-semibold mb-3">Releases <span class="text-xs text-gray-500 font-normal">(blob storage, newest first)</span></h2>
-        <table class="w-full text-sm">
-            <thead><tr class="text-left border-b"><th class="py-1 pr-4">Version</th><th class="py-1 pr-4">Variant</th><th class="py-1 pr-4">Size</th><th class="py-1">Uploaded</th></tr></thead>
+<div class="grid lg:grid-cols-5 gap-6 mb-8">
+    <div class="card lg:col-span-3">
+        <div class="card-head"><div><div class="card-title">Releases</div><div class="card-sub">Blob storage, newest first</div></div></div>
+        <div class="overflow-x-auto">
+        <table class="table">
+            <thead><tr><th>Version</th><th>Variant</th><th class="text-right">Size</th><th>Uploaded</th></tr></thead>
             <tbody>
                 {% for r in releases %}
-                <tr class="border-b border-gray-100">
-                    <td class="py-1 pr-4 font-mono text-xs">{{ r.version }}</td>
-                    <td class="py-1 pr-4">{% if r.variant == "bad" %}<span class="text-red-700">bad (fault)</span>{% else %}good{% endif %}</td>
-                    <td class="py-1 pr-4">{{ r.size|filesizeformat }}</td>
-                    <td class="py-1">{{ r.uploaded_at }}</td>
+                <tr>
+                    <td class="mono">{{ r.version }}</td>
+                    <td>{% if r.variant == "bad" %}<span class="badge-bad">Faulty build</span>{% else %}<span class="badge-ok">Good</span>{% endif %}</td>
+                    <td class="text-right tabular-nums">{{ r.size|filesizeformat }}</td>
+                    <td class="text-muted whitespace-nowrap">{{ r.uploaded_at|date:"M j, H:i" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="4" class="py-3 text-gray-500">No releases yet - run the build-firmware workflow.</td></tr>
+                <tr><td colspan="4" class="text-muted py-8 text-center">No releases yet. Run the build-firmware workflow to publish one.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 
-    <form method="post" action="{% url 'devices:start_rollout' %}" class="bg-white rounded shadow p-6 space-y-4">
+    <form method="post" action="{% url 'devices:start_rollout' %}" class="card lg:col-span-2">
         {% csrf_token %}
-        <h2 class="font-semibold">Start a canary rollout</h2>
-        <div>
-            <label class="block text-sm font-medium mb-1">Release</label>
-            <select name="blob_name" required class="w-full border rounded px-3 py-2">
-                {% for r in releases %}
-                <option value="{{ r.blob_name }}">{{ r.version }}{% if r.variant == "bad" %} (bad build){% endif %}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div>
-            <label class="block text-sm font-medium mb-1">Devices</label>
-            {% for device in devices %}
-            <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="device_ids" value="{{ device.device_id }}" checked>
-                {{ device.device_id }} <span class="text-gray-400 font-mono text-xs">{{ device.firmware_version }}</span>
-            </label>
-            {% endfor %}
-        </div>
-        <div>
-            <label class="block text-sm font-medium mb-1">Canary (updated first)</label>
-            <select name="canary_device_id" class="w-full border rounded px-3 py-2">
+        <div class="card-head"><div><div class="card-title">Start a canary rollout</div><div class="card-sub">Halts on rollback or failed health check</div></div></div>
+        <div class="card-body space-y-4">
+            <div>
+                <label class="label">Release</label>
+                <select name="blob_name" required class="input">
+                    {% for r in releases %}
+                    <option value="{{ r.blob_name }}">{{ r.version }}{% if r.variant == "bad" %} (faulty build){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="label">Devices</label>
+                <div class="space-y-1.5">
                 {% for device in devices %}
-                <option value="{{ device.device_id }}">{{ device.device_id }}</option>
+                <label class="flex items-center gap-2.5 text-sm">
+                    <input type="checkbox" name="device_ids" value="{{ device.device_id }}" class="w-4 h-4 accent-[#1f6f50]" checked>
+                    <span class="mono">{{ device.device_id }}</span> <span class="text-muted text-xs">{{ device.firmware_version }}</span>
+                </label>
                 {% endfor %}
-            </select>
+                </div>
+            </div>
+            <div>
+                <label class="label">Canary device (updated first)</label>
+                <select name="canary_device_id" class="input">
+                    {% for device in devices %}
+                    <option value="{{ device.device_id }}">{{ device.device_id }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn-primary w-full">Start rollout</button>
+            <p class="hint">
+                Devices update one at a time. The rollout halts if a device rolls itself back or isn't healthy on the
+                new version within 4 minutes, leaving the rest of the fleet untouched.
+            </p>
         </div>
-        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700">Start rollout</button>
-        <p class="text-xs text-gray-500">
-            Devices update one at a time. The rollout halts if a device rolls itself back or isn't healthy on the
-            new version within 4 minutes, leaving the rest of the fleet untouched.
-        </p>
     </form>
 </div>
 
-<h2 class="text-xl font-semibold mt-8 mb-2">Recent rollouts</h2>
+<h2 class="section-title">Recent rollouts</h2>
 {% for rollout in rollouts %}
-<div class="bg-white rounded shadow p-4 mb-3">
-    <p class="font-medium">
-        {{ rollout.version }} &middot;
-        <span class="{% if rollout.status == 'completed' %}text-green-700{% elif rollout.status == 'halted' %}text-red-700{% else %}text-blue-700{% endif %}">{{ rollout.status }}</span>
-        <span class="text-gray-500 text-sm">&middot; {{ rollout.created_at }}</span>
-    </p>
-    <pre class="text-xs bg-gray-50 rounded p-2 mt-2 whitespace-pre-wrap">{{ rollout.log|default:"(no log yet)" }}</pre>
+<div class="card mb-3">
+    <div class="card-head">
+        <div class="flex items-center gap-3">
+            <span class="mono font-medium">{{ rollout.version }}</span>
+            {% if rollout.status == 'completed' %}<span class="badge-ok">Completed</span>{% elif rollout.status == 'halted' %}<span class="badge-bad">Halted</span>{% else %}<span class="badge-warn">{{ rollout.status|capfirst }}</span>{% endif %}
+        </div>
+        <span class="text-xs text-muted">{{ rollout.created_at|date:"M j, H:i" }}</span>
+    </div>
+    <pre class="mono text-muted p-5 whitespace-pre-wrap">{{ rollout.log|default:"(no log yet)" }}</pre>
 </div>
 {% empty %}
-<p class="text-sm text-gray-500">No rollouts yet.</p>
+<div class="card card-body text-sm text-muted">No rollouts yet.</div>
 {% endfor %}
 {% endblock %}

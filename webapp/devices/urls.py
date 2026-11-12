@@ -11,4 +11,5 @@ urlpatterns = [
     path("firmware/rollout/", views.start_rollout, name="start_rollout"),
     path("<str:device_id>/", views.device_detail, name="detail"),
     path("<str:device_id>/config/", views.update_config, name="update_config"),
+    path("<str:device_id>/metrics.json", views.device_metrics, name="metrics"),
 ]

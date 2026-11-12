@@ -1,74 +1,103 @@
-<div class="space-y-2">
-    <p>Fault injected at <strong>{{ incident.injected_at }}</strong></p>
+<div class="card-head">
+    <div><div class="card-title">Recovery timeline</div><div class="card-sub">Updates live until the device is verified healthy</div></div>
+    {% include "incidents/_phase.html" %}
+</div>
 
-    <p class="{% if incident.detected_at %}text-green-700{% else %}text-gray-400{% endif %}">
-        {% if incident.detected_at %}
-            Detected in <strong>{{ incident.mttd_seconds|floatformat:1 }}s</strong>
-            by {{ incident.get_detected_by_display|default:"?" }}
-            {% if incident.detection_signal %}(<span class="font-mono text-xs">{{ incident.detection_signal }}</span>){% endif %}
-        {% else %}
-            Waiting for detection...
+<div class="card-body">
+    <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="rounded-lg bg-canvas border border-line p-4">
+            <div class="stat-label">Time to detect</div>
+            <div class="text-2xl font-semibold tabular-nums mt-1">{% if incident.mttd_seconds is not None %}{{ incident.mttd_seconds|floatformat:1 }} s{% else %}<span class="text-muted">&ndash;</span>{% endif %}</div>
+        </div>
+        <div class="rounded-lg bg-canvas border border-line p-4">
+            <div class="stat-label">Time to recover</div>
+            <div class="text-2xl font-semibold tabular-nums mt-1">{% if incident.mttr_seconds is not None %}{{ incident.mttr_seconds|floatformat:1 }} s{% else %}<span class="text-muted">&ndash;</span>{% endif %}</div>
+        </div>
+    </div>
+
+    <ol class="relative border-l border-line ml-2 space-y-5">
+        <li class="pl-6 relative">
+            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-ink ring-4 ring-white"></span>
+            <div class="text-sm font-medium">Fault injected</div>
+            <div class="text-xs text-muted">{{ incident.injected_at|date:"M j, H:i:s" }}</div>
+        </li>
+        <li class="pl-6 relative">
+            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full ring-4 ring-white {% if incident.detected_at %}bg-accent{% else %}bg-line{% endif %}"></span>
+            {% if incident.detected_at %}
+                <div class="text-sm font-medium">Detected by {{ incident.get_detected_by_display|default:"?" }} in {{ incident.mttd_seconds|floatformat:1 }} s</div>
+                <div class="text-xs text-muted">{{ incident.detected_at|date:"H:i:s" }}{% if incident.detection_signal %} &middot; signal <span class="mono">{{ incident.detection_signal }}</span>{% endif %}</div>
+            {% else %}
+                <div class="text-sm text-muted">Waiting for detection&hellip;</div>
+            {% endif %}
+        </li>
+        <li class="pl-6 relative">
+            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full ring-4 ring-white {% if incident.remediation_started_at %}bg-accent{% else %}bg-line{% endif %}"></span>
+            {% if incident.remediation_started_at %}
+                <div class="text-sm font-medium">Remediation started</div>
+                <div class="text-xs text-muted">{{ incident.remediation_started_at|date:"H:i:s" }}</div>
+            {% else %}
+                <div class="text-sm text-muted">Waiting for remediation&hellip;</div>
+            {% endif %}
+        </li>
+        {% if incident.pending_action %}
+        <li class="pl-6 relative">
+            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-warn ring-4 ring-white"></span>
+            <div class="text-sm font-medium text-warn">Waiting for approval to run <span class="mono">{{ incident.pending_step }}</span></div>
+        </li>
+        {% elif incident.escalated_at and not incident.verified_healthy_at %}
+        <li class="pl-6 relative">
+            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-bad ring-4 ring-white"></span>
+            <div class="text-sm font-medium text-bad">Escalated to an operator</div>
+            <div class="text-xs text-muted">{{ incident.escalated_at|date:"H:i:s" }}</div>
+        </li>
         {% endif %}
-    </p>
+        <li class="pl-6 relative">
+            <span class="absolute -left-[7px] top-1 w-3 h-3 rounded-full ring-4 ring-white {% if incident.verified_healthy_at %}bg-ok{% else %}bg-line{% endif %}"></span>
+            {% if incident.verified_healthy_at %}
+                <div class="text-sm font-medium text-ok">Verified healthy &middot; resolved by {{ incident.get_resolved_by_display|default:"?" }}</div>
+                <div class="text-xs text-muted">{{ incident.verified_healthy_at|date:"H:i:s" }}{% if incident.messages_dropped is not None %} &middot; {{ incident.messages_dropped }} message(s) dropped{% endif %}</div>
+            {% else %}
+                <div class="text-sm text-muted">Waiting for recovery&hellip;</div>
+            {% endif %}
+        </li>
+    </ol>
 
-    <p class="{% if incident.remediation_started_at %}text-green-700{% else %}text-gray-400{% endif %}">
-        {% if incident.remediation_started_at %}
-            Remediation started at {{ incident.remediation_started_at }}
-        {% else %}
-            Waiting for remediation to start...
+    {% if incident.pending_action and not incident.verified_healthy_at or can_resolve %}
+    <div class="flex gap-3 mt-6">
+        {% if incident.pending_action and not incident.verified_healthy_at %}
+        <form method="post" action="{% url 'incidents:approve' incident.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-warn">Approve {{ incident.pending_step }}</button>
+        </form>
         {% endif %}
-    </p>
-
-    {% if incident.pending_action %}
-    <p class="text-yellow-700 font-semibold">Waiting for approval to run <span class="font-mono">{{ incident.pending_step }}</span></p>
-    {% elif incident.escalated_at and not incident.verified_healthy_at %}
-    <p class="text-red-700 font-semibold">Escalated to a human at {{ incident.escalated_at }}</p>
+        {% if can_resolve %}
+        <form method="post" action="{% url 'incidents:resolve' incident.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-secondary">Resolve manually</button>
+        </form>
+        {% endif %}
+    </div>
     {% endif %}
-
-    <p class="{% if incident.verified_healthy_at %}text-green-700 font-semibold{% else %}text-gray-400{% endif %}">
-        {% if incident.verified_healthy_at %}
-            Recovered in <strong>{{ incident.mttr_seconds|floatformat:1 }}s</strong> total,
-            resolved by {{ incident.get_resolved_by_display|default:"?" }}
-            {% if incident.messages_dropped is not None %}&middot; {{ incident.messages_dropped }} message(s) dropped{% endif %}
-        {% else %}
-            Waiting for recovery...
-        {% endif %}
-    </p>
 </div>
 
 {% if actions %}
-<h3 class="font-semibold mt-5 mb-2 text-sm">Remediation timeline</h3>
-<table class="w-full text-xs">
-    <thead><tr class="text-left border-b"><th class="py-1 pr-3">Time</th><th class="py-1 pr-3">Tier</th><th class="py-1 pr-3">Action</th><th class="py-1 pr-3">OK</th><th class="py-1">Detail</th></tr></thead>
-    <tbody>
-        {% for a in actions %}
-        <tr class="border-b border-gray-100 align-top">
-            <td class="py-1 pr-3 whitespace-nowrap">{{ a.started_at|time:"H:i:s" }}</td>
-            <td class="py-1 pr-3">{{ a.tier }}</td>
-            <td class="py-1 pr-3 font-mono">{{ a.action }}</td>
-            <td class="py-1 pr-3">{{ a.success|yesno:"yes,no,-" }}</td>
-            <td class="py-1 text-gray-500 break-all">{{ a.detail|truncatechars:160 }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
-
-<div class="flex gap-3 mt-5">
-    {% if incident.pending_action and not incident.verified_healthy_at %}
-    <form method="post" action="{% url 'incidents:approve' incident.id %}">
-        {% csrf_token %}
-        <button type="submit" class="bg-yellow-600 text-white px-4 py-2 rounded font-semibold hover:bg-yellow-700">
-            Approve {{ incident.pending_step }}
-        </button>
-    </form>
-    {% endif %}
-    {% if can_resolve %}
-    <form method="post" action="{% url 'incidents:resolve' incident.id %}">
-        {% csrf_token %}
-        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700">
-            Resolve manually
-        </button>
-    </form>
-    {% endif %}
+<div class="border-t border-line">
+    <div class="px-5 pt-4 pb-2 text-sm font-semibold">Remediation actions</div>
+    <div class="overflow-x-auto">
+    <table class="table">
+        <thead><tr><th>Time</th><th>Tier</th><th>Action</th><th>Result</th><th>Detail</th></tr></thead>
+        <tbody>
+            {% for a in actions %}
+            <tr class="align-top">
+                <td class="whitespace-nowrap tabular-nums">{{ a.started_at|time:"H:i:s" }}</td>
+                <td>{% include "incidents/_tier.html" with tier=a.tier %}</td>
+                <td class="mono">{{ a.action }}</td>
+                <td>{% if a.success %}<span class="text-ok">Success</span>{% elif a.success is False %}<span class="text-bad">Failed</span>{% else %}<span class="text-muted">&ndash;</span>{% endif %}</td>
+                <td class="text-muted text-xs break-all">{{ a.detail|truncatechars:160 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
 </div>
+{% endif %}

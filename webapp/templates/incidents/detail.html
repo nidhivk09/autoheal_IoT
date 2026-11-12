@@ -1,27 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Incident #{{ incident.id }}{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-1">Incident #{{ incident.id }}</h1>
-<p class="text-gray-500 mb-6">
-    <a class="hover:underline" href="{% url 'devices:detail' incident.device.device_id %}">{{ incident.device.device_id }}</a> &middot;
-    {{ incident.get_fault_type_display }} &middot;
-    {{ incident.get_remediation_mode_display }} &middot;
-    edge healing {{ incident.edge_healing|yesno:"on,off,n/a" }} &middot; trial #{{ incident.trial_number }}
-</p>
-
-<div class="bg-white rounded shadow p-6 max-w-3xl"
-     id="incident-status"
-     {% if not incident.verified_healthy_at %}
-     hx-get="{% url 'incidents:detail_status' incident.id %}"
-     hx-trigger="every 3s"
-     hx-swap="innerHTML"
-     {% endif %}>
-    {% include "incidents/_status.html" %}
+<a href="{% url 'incidents:log' %}" class="text-sm text-muted hover:text-ink">&larr; Incident log</a>
+<div class="mt-2 mb-8">
+    <h1 class="page-title">Incident #{{ incident.id }} &middot; {{ incident.get_fault_type_display }}</h1>
+    <p class="page-sub">
+        <a class="link" href="{% url 'devices:detail' incident.device.device_id %}">{{ incident.device.device_id }}</a> &middot;
+        {{ incident.get_remediation_mode_display }} mode &middot;
+        edge healing {{ incident.edge_healing|yesno:"on,off,n/a" }} &middot; trial {{ incident.trial_number }}
+    </p>
 </div>
 
-{% if incident.notes %}
-<p class="mt-4 text-sm text-gray-500">Notes: {{ incident.notes }}</p>
-{% endif %}
+<div class="grid lg:grid-cols-3 gap-6">
+    <div class="card lg:col-span-2"
+         id="incident-status"
+         {% if not incident.verified_healthy_at %}
+         hx-get="{% url 'incidents:detail_status' incident.id %}"
+         hx-trigger="every 3s"
+         hx-swap="innerHTML"
+         {% endif %}>
+        {% include "incidents/_status.html" %}
+    </div>
 
-<a href="{% url 'incidents:panel' %}" class="inline-block mt-6 text-blue-600 hover:underline text-sm">&larr; Back to fault injection</a>
+    <div class="card self-start">
+        <div class="card-head"><div class="card-title">Details</div></div>
+        <table class="table">
+            <tbody>
+                <tr><td class="text-muted">Device</td><td class="text-right mono">{{ incident.device.device_id }}</td></tr>
+                <tr><td class="text-muted">Fault</td><td class="text-right">{{ incident.fault_type }}</td></tr>
+                <tr><td class="text-muted">Mode</td><td class="text-right">{{ incident.remediation_mode|capfirst }}</td></tr>
+                <tr><td class="text-muted">Edge healing</td><td class="text-right">{{ incident.edge_healing|yesno:"On,Off,n/a" }}</td></tr>
+                <tr><td class="text-muted">Injected</td><td class="text-right whitespace-nowrap">{{ incident.injected_at|date:"M j, H:i:s" }}</td></tr>
+            </tbody>
+        </table>
+        {% if incident.notes %}
+        <div class="px-5 py-4 border-t border-line text-sm text-muted">{{ incident.notes }}</div>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

@@ -1,0 +1,1 @@
+{% with p=incident.phase %}<span class="{% if p == 'recovered' %}badge-ok{% elif p == 'escalated' %}badge-bad{% elif p == 'awaiting approval' or p == 'remediating' or p == 'detected' %}badge-warn{% else %}badge-neutral{% endif %}"><span class="dot"></span>{{ p|capfirst }}</span>{% endwith %}

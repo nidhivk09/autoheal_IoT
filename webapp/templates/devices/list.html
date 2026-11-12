@@ -1,11 +1,79 @@
 {% extends "base.html" %}
 {% block title %}Fleet{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-4">Fleet</h1>
-<div id="device-table"
-     hx-get="{% url 'devices:list_partial' %}"
-     hx-trigger="every 10s"
-     hx-swap="innerHTML">
-    {% include "devices/_device_table.html" %}
+<div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+    <div>
+        <h1 class="page-title">Fleet overview</h1>
+        <p class="page-sub">Live status of ESP32 devices connected through Azure IoT Hub. Refreshes every 10 seconds.</p>
+    </div>
+    <a href="{% url 'incidents:panel' %}" class="btn-secondary">Inject a fault</a>
+</div>
+
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="card p-5">
+        <div class="stat-label">Devices online</div>
+        <div class="stat-value">{{ summary.devices_online }}<span class="text-muted text-lg font-normal"> / {{ summary.devices_total }}</span></div>
+        <div class="stat-foot">Reporting telemetry in the last 30 s</div>
+    </div>
+    <div class="card p-5">
+        <div class="stat-label">Incidents recorded</div>
+        <div class="stat-value">{{ summary.incidents_total }}</div>
+        <div class="stat-foot">{{ summary.incidents_open }} open &middot; {% if summary.recovered_pct is not None %}{{ summary.recovered_pct }}% recovered{% else %}none yet{% endif %}</div>
+    </div>
+    <div class="card p-5">
+        <div class="stat-label">Median time to recover</div>
+        <div class="stat-value">{% if summary.median_mttr is not None %}{{ summary.median_mttr }}<span class="text-muted text-lg font-normal"> s</span>{% else %}&ndash;{% endif %}</div>
+        <div class="stat-foot">Fault injected &rarr; verified healthy</div>
+    </div>
+    <div class="card p-5">
+        <div class="stat-label">Healed on the device</div>
+        <div class="stat-value">{% if summary.edge_pct is not None %}{{ summary.edge_pct }}<span class="text-muted text-lg font-normal">%</span>{% else %}&ndash;{% endif %}</div>
+        <div class="stat-foot">Share of recoveries by the edge tier</div>
+    </div>
+</div>
+
+<div class="card mb-8">
+    <div class="card-head">
+        <div>
+            <div class="card-title">Devices</div>
+            <div class="card-sub">Latest values from device telemetry</div>
+        </div>
+    </div>
+    <div id="device-table" class="overflow-x-auto"
+         hx-get="{% url 'devices:list_partial' %}"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML">
+        {% include "devices/_device_table.html" %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-head">
+        <div>
+            <div class="card-title">Recent incidents</div>
+            <div class="card-sub">Latest detected or injected faults across the fleet</div>
+        </div>
+        <a href="{% url 'incidents:log' %}" class="link text-sm">View all</a>
+    </div>
+    <div class="overflow-x-auto">
+    <table class="table">
+        <thead><tr><th>Incident</th><th>Device</th><th>Fault</th><th>Status</th><th>Resolved by</th><th class="text-right">TTR</th><th>When</th></tr></thead>
+        <tbody>
+        {% for incident in recent_incidents %}
+            <tr>
+                <td><a class="link" href="{% url 'incidents:detail' incident.id %}">#{{ incident.id }}</a></td>
+                <td class="mono">{{ incident.device.device_id }}</td>
+                <td>{{ incident.get_fault_type_display }}</td>
+                <td>{% include "incidents/_phase.html" %}</td>
+                <td>{% include "incidents/_tier.html" with tier=incident.resolved_by %}</td>
+                <td class="text-right tabular-nums">{% if incident.mttr_seconds is not None %}{{ incident.mttr_seconds|floatformat:1 }} s{% else %}&ndash;{% endif %}</td>
+                <td class="text-muted whitespace-nowrap">{{ incident.injected_at|date:"M j, H:i" }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="7" class="text-muted py-8 text-center">No incidents yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
 </div>
 {% endblock %}

@@ -1,0 +1,1 @@
+{% with s=device.display_status %}<span class="{% if s == 'online' %}badge-ok{% elif s == 'degraded' %}badge-warn{% else %}badge-bad{% endif %}"><span class="dot"></span>{{ s|capfirst }}</span>{% endwith %}

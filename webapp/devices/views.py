@@ -1,6 +1,8 @@
 import logging
+import statistics
 
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .models import Device, FirmwareRollout
@@ -24,8 +26,32 @@ def _device_context() -> dict:
     return {"devices": [_annotate(d) for d in Device.objects.all()]}
 
 
+def _fleet_summary(devices: list[Device]) -> dict:
+    """Headline numbers for the Fleet page's summary row."""
+    from incidents.models import Incident
+
+    resolved = list(Incident.objects.filter(verified_healthy_at__isnull=False))
+    mttrs = [i.mttr_seconds for i in resolved if i.mttr_seconds is not None]
+    total = Incident.objects.count()
+    edge = sum(1 for i in resolved if i.resolved_by == "edge")
+    return {
+        "devices_total": len(devices),
+        "devices_online": sum(1 for d in devices if d.display_status == Device.Status.ONLINE),
+        "incidents_total": total,
+        "incidents_open": total - len(resolved),
+        "recovered_pct": round(100 * len(resolved) / total) if total else None,
+        "median_mttr": round(statistics.median(mttrs), 1) if mttrs else None,
+        "edge_pct": round(100 * edge / len(resolved)) if resolved else None,
+    }
+
+
 def device_list(request):
-    return render(request, "devices/list.html", _device_context())
+    from incidents.models import Incident
+
+    context = _device_context()
+    context["summary"] = _fleet_summary(context["devices"])
+    context["recent_incidents"] = Incident.objects.select_related("device").order_by("-injected_at")[:6]
+    return render(request, "devices/list.html", context)
 
 
 def device_list_partial(request):
@@ -41,6 +67,21 @@ def device_detail(request, device_id: str):
         "incidents": device.incidents.all()[:10],
     }
     return render(request, "devices/detail.html", context)
+
+
+CHART_METRICS = ("free_heap", "rssi", "edge_heals", "buffered")
+
+
+def device_metrics(request, device_id: str):
+    """Recent telemetry series for the device page's live charts."""
+    device = get_object_or_404(Device, device_id=device_id)
+    points = int(request.GET.get("points", 120))
+    series = {}
+    for name in CHART_METRICS:
+        rows = list(device.metrics.filter(metric=name).order_by("-timestamp").values_list("timestamp", "value")[:points])
+        rows.reverse()
+        series[name] = {"t": [t.isoformat() for t, _ in rows], "v": [v for _, v in rows]}
+    return JsonResponse(series)
 
 
 def update_config(request, device_id: str):

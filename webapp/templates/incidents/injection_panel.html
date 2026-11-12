@@ -1,69 +1,82 @@
 {% extends "base.html" %}
-{% block title %}Fault Injection{% endblock %}
+{% block title %}Fault injection{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-4">Fault Injection Control Panel</h1>
+<div class="mb-8">
+    <h1 class="page-title">Fault injection</h1>
+    <p class="page-sub">Trigger a controlled fault on a device and follow how the system detects and repairs it.</p>
+</div>
 
-<form method="post" action="{% url 'incidents:inject' %}" class="bg-white rounded shadow p-6 max-w-lg space-y-4">
-    {% csrf_token %}
-    <div>
-        <label class="block text-sm font-medium mb-1">Device</label>
-        <select name="device_id" required class="w-full border rounded px-3 py-2">
-            {% for device in devices %}
-            <option value="{{ device.device_id }}">{{ device.display_name }} ({{ device.device_id }}) &middot; edge healing {{ device.desired_edge_healing|yesno:"on,off" }}</option>
-            {% endfor %}
-        </select>
-        <p class="text-xs text-gray-500 mt-1">Edge healing is a per-device setting - change it on the device's page in the Fleet view.</p>
-    </div>
-    <div>
-        <label class="block text-sm font-medium mb-1">Fault type</label>
-        <select name="fault_type" required class="w-full border rounded px-3 py-2">
-            {% for value, label in fault_types %}
-            <option value="{{ value }}">{{ label }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div>
-        <label class="block text-sm font-medium mb-1">Remediation mode</label>
-        <select name="remediation_mode" required class="w-full border rounded px-3 py-2">
-            {% for value, label in remediation_modes %}
-            <option value="{{ value }}">{{ label }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div>
-        <label class="block text-sm font-medium mb-1">Outage duration (s) <span class="text-gray-500 font-normal">- network loss only</span></label>
-        <input type="number" name="duration_s" value="30" min="5" max="600" class="w-full border rounded px-3 py-2">
-    </div>
-    <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded font-semibold hover:bg-red-700">
-        Inject Fault
-    </button>
-</form>
+<div class="grid lg:grid-cols-5 gap-6">
+    <form method="post" action="{% url 'incidents:inject' %}" class="card lg:col-span-2 self-start">
+        {% csrf_token %}
+        <div class="card-head"><div><div class="card-title">New experiment</div><div class="card-sub">Sent to the device as an IoT Hub direct method</div></div></div>
+        <div class="card-body space-y-4">
+            <div>
+                <label class="label">Device</label>
+                <select name="device_id" required class="input">
+                    {% for device in devices %}
+                    <option value="{{ device.device_id }}">{{ device.device_id }} &middot; edge {{ device.desired_edge_healing|yesno:"on,off" }}</option>
+                    {% endfor %}
+                </select>
+                <p class="hint">Edge healing is set per device on its page in the Fleet view.</p>
+            </div>
+            <div>
+                <label class="label">Fault type</label>
+                <select name="fault_type" required class="input">
+                    {% for value, label in fault_types %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="label">Remediation mode</label>
+                <select name="remediation_mode" required class="input">
+                    {% for value, label in remediation_modes %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="label">Outage duration (seconds)</label>
+                <input type="number" name="duration_s" value="30" min="5" max="600" class="input">
+                <p class="hint">Only used for network loss.</p>
+            </div>
+            <button type="submit" class="btn-danger w-full">Inject fault</button>
+        </div>
+    </form>
 
-<h2 class="text-xl font-semibold mt-8 mb-2">Recent incidents</h2>
-<table class="w-full text-sm">
-    <thead>
-        <tr class="text-left border-b">
-            <th class="py-2 pr-4">Device</th>
-            <th class="py-2 pr-4">Fault</th>
-            <th class="py-2 pr-4">Mode</th>
-            <th class="py-2 pr-4">Edge</th>
-            <th class="py-2 pr-4">Phase</th>
-            <th class="py-2 pr-4">Injected at</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for incident in recent_incidents %}
-        <tr class="border-b border-gray-100">
-            <td class="py-2 pr-4"><a class="text-blue-600 hover:underline" href="{% url 'incidents:detail' incident.id %}">{{ incident.device.device_id }}</a></td>
-            <td class="py-2 pr-4">{{ incident.get_fault_type_display }}</td>
-            <td class="py-2 pr-4">{{ incident.get_remediation_mode_display }}</td>
-            <td class="py-2 pr-4">{{ incident.edge_healing|yesno:"on,off,-" }}</td>
-            <td class="py-2 pr-4">{{ incident.phase }}</td>
-            <td class="py-2 pr-4">{{ incident.injected_at }}</td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="6" class="py-4 text-gray-500">No incidents yet.</td></tr>
-        {% endfor %}
-    </tbody>
-</table>
+    <div class="card lg:col-span-3 self-start">
+        <div class="card-head"><div><div class="card-title">Recent experiments</div><div class="card-sub">Open one to watch it live</div></div></div>
+        <div class="overflow-x-auto">
+        <table class="table">
+            <thead><tr><th>Incident</th><th>Fault</th><th>Mode</th><th>Status</th><th>When</th></tr></thead>
+            <tbody>
+                {% for incident in recent_incidents %}
+                <tr>
+                    <td class="whitespace-nowrap"><a class="link" href="{% url 'incidents:detail' incident.id %}">#{{ incident.id }}</a></td>
+                    <td>{{ incident.fault_type }}</td>
+                    <td>{{ incident.remediation_mode|capfirst }}</td>
+                    <td>{% include "incidents/_phase.html" %}</td>
+                    <td class="text-muted whitespace-nowrap">{{ incident.injected_at|date:"H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-muted py-8 text-center">No incidents yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-6">
+    <div class="card-head"><div class="card-title">Fault model</div></div>
+    <div class="card-body grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+        <div><div class="font-medium">Network loss</div><div class="text-muted text-xs mt-0.5">Simulated access-point outage; device buffers telemetry and reconnects with backoff.</div></div>
+        <div><div class="font-medium">Task hang</div><div class="text-muted text-xs mt-0.5">Application task stops its heartbeat; the edge watchdog restarts it.</div></div>
+        <div><div class="font-medium">Memory leak</div><div class="text-muted text-xs mt-0.5">Heap drains steadily until the low-heap threshold triggers a restart.</div></div>
+        <div><div class="font-medium">Message flood</div><div class="text-muted text-xs mt-0.5">Runaway telemetry rate, detected by the device and by cloud rate checks.</div></div>
+        <div><div class="font-medium">Config drift</div><div class="text-muted text-xs mt-0.5">Running config diverges from the device twin's desired config.</div></div>
+        <div><div class="font-medium">Bad firmware</div><div class="text-muted text-xs mt-0.5">OTA update fails its self-test and the bootloader rolls back.</div></div>
+    </div>
+</div>
 {% endblock %}
