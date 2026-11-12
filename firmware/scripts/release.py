@@ -69,6 +69,8 @@ def main() -> None:
     args = parser.parse_args()
 
     load_env()
+    if os.sep in args.pio:  # a path, not a bare command: builds run from firmware/
+        args.pio = str(Path(args.pio).resolve())
     good_version, bad_version = args.version, f"{args.version}-bad"
     dist = FIRMWARE_DIR / "dist"
     dist.mkdir(exist_ok=True)
